@@ -1,0 +1,17 @@
+---
+title: "San_Nic_Analysis"
+author: "Owen Liu"
+date: "March 29, 2016"
+output: html_document
+---
+
+```{r data and required packages, echo=F}
+library(ggplot2)
+library(dplyr)
+lunique <- function(x) length(unique(x))
+
+#note: all raw data has a .dat
+W_D <- getwd()
+# benthic cover raw data
+cover.dat <- read.csv(file=paste(W_D,'/data/Benthic cover raw data.csv',sep=''))
+```
