@@ -8,10 +8,55 @@ output: html_document
 ```{r data and required packages, echo=F}
 library(ggplot2)
 library(dplyr)
+library(RColorBrewer)
 lunique <- function(x) length(unique(x))
 
 #note: all raw data has a .dat
 W_D <- getwd()
 # benthic cover raw data
 cover.dat <- read.csv(file=paste(W_D,'/data/Benthic cover raw data.csv',sep=''))
+# benthic species density
+benthdens.dat <- read.csv(file=paste(W_D,'/data/Benthic density raw data.csv',sep=''))
+#benthic fish density
+fishdens.dat <- read.csv(file=paste(W_D,'/data/Benthic fish density raw data.csv',sep=''))
+#midwater fish density
+midwaterfish.dat <-  read.csv(file=paste(W_D,'/data/Midwater fish density raw data.csv',sep=''))
+#spp key for the dataset
+spp.key <- read.csv(file=paste(W_D,'/data/Table4_Species_sampled.csv',sep=''))
+
+```
+
+Functions to look at density over time of certain taxa
+
+```{r data viz functions}
+
+#benthic cover species rank by mean % cover
+spp.abun<-arrange(aggregate(list(meancover=cover.dat$Cover),by=list(species=cover.dat$SpeciesCode),FUN=mean), desc(meancover))
+betterDates<-as.Date(as.character(cover.dat$Date),format="%m/%d/%y")
+cover.dat$Date<-betterDates
+
+#function for a given species utilizing the benthic cover dataset
+benthcover.spp.viz <- function (spp) {
+  #INPUTS: spp is the species code (taken from the spp.key above), res is the resolution (site level (denoted 'Station') or quadrat level(denoted "Quadrat"))
+  spp.dat <- subset(cover.dat,cover.dat$SpeciesCode==spp)
+  #subset for the given species
+  timeseries <- aggregate(list(Cover=spp.dat$Cover), by=list(Date=spp.dat$Date,Site=spp.dat$Station),FUN=mean)
+  timeseries$Site <- as.factor(timeseries$Site)
+  spp.plot <- ggplot(timeseries,aes(x=Date,y=Cover,group=Site,color=Site)) + geom_line()
+  return(list(tseries=timeseries,plot=spp.plot))
+}
+
+# and for density
+betterDates<-as.Date(as.character(benthdens.dat$Date),format="%m/%d/%y")
+benthdens.dat$Date<-betterDates
+#function for a given species utilizing the benthic cover dataset
+benthdens.spp.viz <- function (spp) {
+  #INPUTS: spp is the species code (taken from the spp.key above), res is the resolution (site level (denoted 'Station') or swath level(denoted "Swath"))
+  spp.dat <- subset(benthdens.dat,benthdens.dat$SpeciesCode==spp)
+  #subset for the given species
+  timeseries <- aggregate(list(Density=spp.dat$Density), by=list(Date=spp.dat$Date,Site=spp.dat$Station),FUN=mean)
+  timeseries$Site <- as.factor(timeseries$Site)
+  spp.plot <- ggplot(timeseries,aes(x=Date,y=Density,group=Site,color=Site)) + geom_line()
+  return(list(tseries=timeseries,plot=spp.plot))
+}
 ```
