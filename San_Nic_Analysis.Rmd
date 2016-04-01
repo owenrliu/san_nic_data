@@ -9,7 +9,6 @@ output: html_document
 library(ggplot2)
 library(dplyr)
 library(RColorBrewer)
-lunique <- function(x) length(unique(x))
 
 #note: all raw data has a .dat
 W_D <- getwd()
@@ -24,6 +23,55 @@ midwaterfish.dat <-  read.csv(file=paste(W_D,'/data/Midwater fish density raw da
 #spp key for the dataset
 spp.key <- read.csv(file=paste(W_D,'/data/Table4_Species_sampled.csv',sep=''))
 
+#fix dates in the datasets to be more readable by R
+betterDates <-function(dat) {
+  dates<-as.Date(as.character(dat$Date),format="%m/%d/%y")
+  return(dates)
+}
+benthdens.dat$Date <- betterDates(benthdens.dat)
+fishdens.dat$Date <- betterDates(fishdens.dat)
+cover.dat$Date <- betterDates(cover.dat)
+midwaterfish.dat$Date <- betterDates(midwaterfish.dat)
+
+#helpful functions
+## multiplot function
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+lunique <- function(x) length(unique(x))
+
 ```
 
 Functions to look at density over time of certain taxa
@@ -31,9 +79,8 @@ Functions to look at density over time of certain taxa
 ```{r data viz functions}
 
 #benthic cover species rank by mean % cover
-spp.abun<-arrange(aggregate(list(meancover=cover.dat$Cover),by=list(species=cover.dat$SpeciesCode),FUN=mean), desc(meancover))
-betterDates<-as.Date(as.character(cover.dat$Date),format="%m/%d/%y")
-cover.dat$Date<-betterDates
+spp.abun.cover<-arrange(aggregate(list(meancover=cover.dat$Cover),by=list(species=cover.dat$SpeciesCode),FUN=mean),
+                        desc(meancover))
 
 #function for a given species utilizing the benthic cover dataset
 benthcover.spp.viz <- function (spp) {
@@ -47,8 +94,8 @@ benthcover.spp.viz <- function (spp) {
 }
 
 # and for density
-betterDates<-as.Date(as.character(benthdens.dat$Date),format="%m/%d/%y")
-benthdens.dat$Date<-betterDates
+spp.abun.benthdens<-arrange(aggregate(list(meancover=benthdens.dat$Density),by=list(species=benthdens.dat$SpeciesCode),FUN=mean), desc(meancover))
+
 #function for a given species utilizing the benthic cover dataset
 benthdens.spp.viz <- function (spp) {
   #INPUTS: spp is the species code (taken from the spp.key above), res is the resolution (site level (denoted 'Station') or swath level(denoted "Swath"))
@@ -59,4 +106,96 @@ benthdens.spp.viz <- function (spp) {
   spp.plot <- ggplot(timeseries,aes(x=Date,y=Density,group=Site,color=Site)) + geom_line()
   return(list(tseries=timeseries,plot=spp.plot))
 }
+```
+
+Diversity index for within-site/year 'samples'. Shannon-Weaver used.
+
+```{r diversity function}
+swdi <- function(dataset,site, period) { #dataset can be "benthdens","fish", or "midwater" (with quotes)
+  #subset of data for given site/period
+  set <- switch(dataset,
+                "benthdens" = benthdens.dat,
+                "fish" = fishdens.dat,
+                "midwater" = midwaterfish.dat)
+  
+  dat <- subset(set,set$Station==site & set$Period==period)
+  
+  #if no data for that site/period combination, return N/A
+  if(nrow(dat)==0) return(NA)
+  
+  #appropriate diveristy variable, depending on which dataset
+  var <- switch(dataset,
+                "benthdens"  = 'Density',
+                "fish" = 'AdultDensity',
+                "midwater" = 'AdultDensity')
+  if(max(dat[,var])==0) return(NA)
+
+  agg <- aggregate(list(density=dat[,var]),by=list(species=dat$SpeciesCode),FUN=mean)
+  agg<-subset(agg,agg$density>0)
+  
+  # the index
+  ind <- -sum(sapply(agg$density, function(x) x/sum(agg$density)*log(x/sum(agg$density))))
+  return(ind)
+}
+```
+
+```{r benthic density diversity over time}
+#benthic density diversity over time, for all 7 Stations
+benthdiv.site.datlist <- list()
+benthdiv.site.plotlist <- list()
+
+#Periods have multiple nearby dates associated with them, and we can consolidate those dates for each period for graphing purposes
+dates <- as.Date(sapply(unique(benthdens.dat$Period),function(x)
+  mean(unique(benthdens.dat$Date[benthdens.dat$Period==x]))),origin = "1970-01-01")
+
+for(i in 1:7) {
+  t <- paste('Station',i)
+  series<-sapply(unique(benthdens.dat$Period),FUN=swdi,dataset='benthdens',site=i)
+  out <- data.frame(period=unique(benthdens.dat$Period),diversity=series)
+  out$date <- dates
+  benthdiv.site.datlist[[t]] <- out
+  benthdiv.site.plotlist[[t]] <- ggplot(out, aes(x=date,y=diversity)) +geom_line() +ggtitle(paste(t,'Benthic Diversity')) +xlab('Time')+ylab('S-W Diversity')
+}
+multiplot(plotlist=benthdiv.site.plotlist,cols=2)
+```
+
+```{r benthic fish density diversity over time}
+#benthic density diversity over time, for all 7 Stations
+bfishdiv.site.datlist <- list()
+bfishdiv.site.plotlist <- list()
+
+#Periods have multiple nearby dates associated with them, and we can consolidate those dates for each period for graphing purposes
+dates <- as.Date(sapply(unique(fishdens.dat$Period),function(x)
+  mean(unique(fishdens.dat$Date[fishdens.dat$Period==x]))),origin = "1970-01-01")
+
+for(i in 1:7) {
+  t <- paste('Station',i)
+  series<-sapply(unique(fishdens.dat$Period),FUN=swdi,dataset='fish',site=i)
+  out <- data.frame(period=unique(fishdens.dat$Period),diversity=series)
+  out$date <- dates
+  bfishdiv.site.datlist[[t]] <- out
+  bfishdiv.site.plotlist[[t]] <- ggplot(out, aes(x=date,y=diversity)) +geom_line() +ggtitle(paste(t,'Benthic Fish Diversity')) +xlab('Time')+ylab('S-W Diversity')
+}
+multiplot(plotlist=bfishdiv.site.plotlist,cols=2)
+```
+
+
+```{r midwater fish density diversity over time}
+#benthic density diversity over time, for all 7 Stations
+mfishdiv.site.datlist <- list()
+mfishdiv.site.plotlist <- list()
+
+#Periods have multiple nearby dates associated with them, and we can consolidate those dates for each period for graphing purposes
+dates <- as.Date(sapply(unique(midwaterfish.dat$Period),function(x)
+  mean(unique(midwaterfish.dat$Date[midwaterfish.dat$Period==x]))),origin = "1970-01-01")
+
+for(i in 1:7) {
+  t <- paste('Station',i)
+  series<-sapply(unique(midwaterfish.dat$Period),FUN=swdi,dataset='midwater',site=i)
+  out <- data.frame(period=unique(midwaterfish.dat$Period),diversity=series)
+  out$date <- dates
+  mfishdiv.site.datlist[[t]] <- out
+  mfishdiv.site.plotlist[[t]] <- ggplot(out, aes(x=date,y=diversity)) +geom_line() +ggtitle(paste(t,'Midwater Fish Diversity')) +xlab('Time')+ylab('S-W Diversity')
+}
+multiplot(plotlist=mfishdiv.site.plotlist,cols=2)
 ```
