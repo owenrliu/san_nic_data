@@ -11,6 +11,10 @@ library(dplyr)
 library(RColorBrewer)
 library(reshape2)
 library(vegan)
+library(cluster)
+library(gclus)
+library(sp)
+library(rgdal)
 
 #note: all raw data has a .dat
 W_D <- getwd()
@@ -407,6 +411,7 @@ for (k in 2:(nrow(spe)-1)) {
 k.best <- which.max(asw)
 
 #the plot is produced by plot.silhouette
+par(mfrow=c(1,1))
 plot(1:nrow(spe),asw,type='h',main="Silhouette - optimal number of clusters, UPGMA",xlab='k (number of groups)',
      ylab="Average silhouette width")
 axis(1,k.best,paste('optimum',k.best,sep="\n"),col='red',font=2,col.axis='red')
@@ -423,7 +428,7 @@ grpdist <- function(X) {
   distgr
 }
 
-#Run based on Ward clustering
+#Run based on UPGMA clustering
  kt <- data.frame(k=1:nrow(spe), r=0)
  
  for (i in 2:(nrow(spe)-1)) {
@@ -450,4 +455,55 @@ sil <- silhouette(cutg,spe.dc)
 silo<- sortSilhouette(sil)
 rownames(silo) <- row.names(spe)[attr(silo,'iOrd')]
 plot(silo,main='Silhouette plot - Chord - Ward',cex.names=0.8,col=cutg+1,nmax.lab=100)
+
+##Final dendrogram with the selected groups
+# Reorder dendrogram from hclust(). reorder.hclust() reorders objects so that their order in the dissimilarity matrix
+# is respected as much as possible. This does not affect the topology of the dendrogram
+spe.ch.ord <- reorder.hclust(spe.ch.UPGMA,spe.dc)
+
+#plot reordered dendrogram with group labels
+plot(spe.ch.ord,hang=-1,xlab="3 groups",sub='',ylab='Height',main='Chord - UPGMA (reordered)', labels=cutree(spe.ch.ord,k=k), mar=(c(5,6,6,2)+0.1))
+rect.hclust(spe.ch.ord,k=k)
+
+#plot the final dendrogram with group colors (RGBCMY)
+hcoplot(spe.ch.UPGMA,spe.dc,k=3)
+
+
+##Other representations of this final result
+# Plot of the 4 UPGMA clusters on a map
+# function to convert "deg min" to decimal degrees
+dm2dd <- function(crd) {
+  mins <- strsplit(as.character(crd),split=' ')
+  mins <- as.numeric(unlist(mins))
+  out <- ifelse(mins[1]>0, mins[1]+mins[2]/60, mins[1]-mins[2]/60)
+  return(out)
+}
+stations.spa <- read.csv(file=paste(W_D,'/data/Table1_Monitoring_Stations.csv',sep=''))
+names(stations.spa)<-c('station','name','lat','long','depth','date')
+
+stations.spa$lat<-sapply(stations.spa$lat,dm2dd)
+stations.spa$long<-sapply(stations.spa$long,dm2dd)
+
+plot(spa,asp=1,type='n',main="Three UPGMA Groups",xlab='x coord(km)',ylab='y coord(km)')
+lines(spa,col='lightblue')
+text(50,10,"Upstream",cex=1.2,col='red')
+text(25,115,"Downstream",cex=1.2,col='red')
+#add the 4 groups
+grw <- spebc.UPGMA.g
+k <- length(levels(factor(grw)))
+for(i in 1:k) {
+  points(spa[grw==i,1], spa[grw==i,2], pch=i+20,cex=3,col=i-1,bg=i+1)
+}
+text(spa, row.names(spa), cex=0.8, col='white',font=2)
+legend('bottomright',paste('Group',1:k), pch=(1:k)+20,col=2:(k+1),pt.bg=2:(k+1),pt.cex=2,bty='n')
+
+##Heat map of the distance matrix ordered with the dendrogram
+dend <- as.dendrogram(spe.ch.ord)
+heatmap(as.matrix(spe.dc), Rowv=dend,symm=TRUE,margin=c(3,3))
+#Ordered community table
+# species are ordered by the weighted averages on site scores
+or <- vegemite(spe,spe.ch.ord,scale='log')
+#and a heatmap for the doubly ordered community table
+heatmap(t(spe[rev(or$species)]), Rowv=NA,Colv=dend,col=c('white',brewer.pal(5,'Greens')), scale='none',
+        margin=c(4,4),ylab='Species (weighted averages of sites)',xlab='Sites')
 ```
