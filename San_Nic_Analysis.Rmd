@@ -530,3 +530,40 @@ or <- vegemite(spe,spe.ch.ord,scale='log')
 heatmap(t(spe[rev(or$species)]), Rowv=NA,Colv=dend,col=c('bisque',brewer.pal(3,'Greens')), scale='none',
         margin=c(4,4),ylab='Species (weighted averages of sites)',xlab='Sites')
 ```
+
+
+I'm interested in potentially stable alternate phase states.  The classic alternate stable states in this context are urchins barrens vs. kelp forest. We can plot brown algal density vs. urchin density to see if there are distinct groups.
+
+```{r phase state plots}
+# red urchin density data
+reds <- subset(benthdens.dat,SpeciesCode==29)
+# aggregate by station
+reds<-aggregate(list(dens=reds$Density),by=list(station=reds$Station,period=reds$Period),FUN=mean)
+
+# purple urchin density data
+purples <- subset(benthdens.dat, SpeciesCode==30)
+# aggregate by station
+purples<-aggregate(list(dens=purples$Density),by=list(station=purples$Station,period=purples$Period),FUN=mean)
+
+mp<-subset(benthdens.dat,SpeciesCode==589)
+mp <- aggregate(list(dens=mp$Density),by=list(station=mp$Station, period=mp$Period),FUN=mean)
+
+urch.mp <- left_join(reds,purples,by=c('station','period'))
+urch.mp <- left_join(urch.mp,mp,by=c('station','period'))
+names(urch.mp)[3:5] <- c("red","purple","mp")
+
+urch.mp.melt <- melt(urch.mp,id.vars=names(urch.mp)[1:2], measure.vars=names(urch.mp)[3:5])
+
+ggplot(urch.mp, aes(x=mp, y=red)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of M. pyrifera vs. S. franciscanus") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")
+
+ggplot(urch.mp, aes(x=mp, y=purple)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of M. pyrifera vs. S. purpuratus") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. purpuratus density (ind./m2)")
+
+
+# Map of stations.
+dir_spatial <- paste0(W_D,"/spatial")
+san_nic_base <- readOGR(dsn = path.expand(dir_spatial),layer="san_nic_clip_base")
+stations.spa <- readOGR(dsn = path.expand(dir_spatial),layer="stations")
+sta.coords<-as.data.frame(stations.spa@coords)
+ggplot() + geom_polygon(data=san_nic_base,aes(x=long,y=lat), fill='green3',col='black')+
+  geom_text(data=sta.coords,aes(x=coords.x1,y=coords.x2, label=row.names(sta.coords)))
+```
