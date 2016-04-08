@@ -296,6 +296,7 @@ spe <- aggregate(list(dens=fishdens.dat$AdultDensity),by=list(station=fishdens.d
                                                               species=fishdens.dat$SpeciesCode), FUN=mean) 
 # "long form" data to "short form" matrix, where rows are stations (1-7), columns are species, and values are densities
 spe <- acast(spe,station~species,value.var="dens")
+spe<-as.data.frame(spe)
 
 # Compute a chord distance matrix (i.e. differences between objects, or stations, based on )
 spe.norm <- decostand(spe,'nor')
@@ -396,6 +397,30 @@ plot(spe.ch.ward$height,nrow(spe):2,type='S',main='Fusion levels - Chord - Ward'
      xlab='h (node height)',col='grey')
 text(spe.ch.ward$height,nrow(spe):2,nrow(spe):2, col='red',cex=0.8)
 
+##Cut the trees to obtain k groups and compare the group contents using contingency tables
+
+#choose a common number of groups
+k<-3 #Number of groups where at least a small jump is present in all four graphs of fusion levels
+#cut the dendrograms
+spebc.single.g <- cutree(spe.ch.single,k)
+spebc.complete.g <- cutree(spe.ch.complete,k)
+spebc.UPGMA.g <- cutree(spe.ch.UPGMA,k)
+spebc.ward.g <- cutree(spe.ch.ward,k)
+
+#compare classifications by constructing contingency tables
+#single vs. complete linkage
+table(spebc.single.g,spebc.complete.g)
+#single linkage vs. UPGMA
+table(spebc.single.g,spebc.UPGMA.g)
+#single linkage vs. Ward
+table(spebc.single.g,spebc.ward.g)
+#complete linkage vs. UPGMA
+table(spebc.complete.g,spebc.UPGMA.g)
+#complete linkage vs. Ward
+table(spebc.complete.g,spebc.ward.g)
+#UPGMA vs. Ward
+table(spebc.UPGMA.g,spebc.ward.g)
+
 # Optimal number of clusters according to silhouette widths(Rousseeuw quality index)
 # Plot average silhouette widths (using UPGMA clustering) for all partitions except for the trivial partition in a single group
 # First, create empty vector in which the asw values will be written
@@ -462,7 +487,7 @@ plot(silo,main='Silhouette plot - Chord - Ward',cex.names=0.8,col=cutg+1,nmax.la
 spe.ch.ord <- reorder.hclust(spe.ch.UPGMA,spe.dc)
 
 #plot reordered dendrogram with group labels
-plot(spe.ch.ord,hang=-1,xlab="3 groups",sub='',ylab='Height',main='Chord - UPGMA (reordered)', labels=cutree(spe.ch.ord,k=k), mar=(c(5,6,6,2)+0.1))
+plot(spe.ch.ord,hang=-1,xlab="3 groups",sub='',ylab='Height',main='Chord - UPGMA (reordered)', labels=cutree(spe.ch.ord,k=k))
 rect.hclust(spe.ch.ord,k=k)
 
 #plot the final dendrogram with group colors (RGBCMY)
@@ -484,17 +509,15 @@ names(stations.spa)<-c('station','name','lat','long','depth','date')
 stations.spa$lat<-sapply(stations.spa$lat,dm2dd)
 stations.spa$long<-sapply(stations.spa$long,dm2dd)
 
-plot(spa,asp=1,type='n',main="Three UPGMA Groups",xlab='x coord(km)',ylab='y coord(km)')
-lines(spa,col='lightblue')
-text(50,10,"Upstream",cex=1.2,col='red')
-text(25,115,"Downstream",cex=1.2,col='red')
-#add the 4 groups
+plot(stations.spa$long, stations.spa$lat,asp=1,type='n',main="Three UPGMA Groups",xlab='x coord',ylab='y coord')
+
+#add the 3 groups
 grw <- spebc.UPGMA.g
 k <- length(levels(factor(grw)))
 for(i in 1:k) {
-  points(spa[grw==i,1], spa[grw==i,2], pch=i+20,cex=3,col=i-1,bg=i+1)
+  points(stations.spa[grw==i,4], stations.spa[grw==i,3], pch=i+20,cex=3,col=i-1,bg=i+1)
 }
-text(spa, row.names(spa), cex=0.8, col='white',font=2)
+text(stations.spa$long, stations.spa$lat, stations.spa$station, cex=0.8, col='white',font=2)
 legend('bottomright',paste('Group',1:k), pch=(1:k)+20,col=2:(k+1),pt.bg=2:(k+1),pt.cex=2,bty='n')
 
 ##Heat map of the distance matrix ordered with the dendrogram
@@ -504,6 +527,6 @@ heatmap(as.matrix(spe.dc), Rowv=dend,symm=TRUE,margin=c(3,3))
 # species are ordered by the weighted averages on site scores
 or <- vegemite(spe,spe.ch.ord,scale='log')
 #and a heatmap for the doubly ordered community table
-heatmap(t(spe[rev(or$species)]), Rowv=NA,Colv=dend,col=c('white',brewer.pal(5,'Greens')), scale='none',
+heatmap(t(spe[rev(or$species)]), Rowv=NA,Colv=dend,col=c('bisque',brewer.pal(3,'Greens')), scale='none',
         margin=c(4,4),ylab='Species (weighted averages of sites)',xlab='Sites')
 ```

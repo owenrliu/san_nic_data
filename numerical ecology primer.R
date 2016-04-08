@@ -70,6 +70,18 @@ spe.dh <- dist(spe.hel)
   
   par(op)
 }
+
+# Usage:
+# coldiss(D = dissimilarity.matrix, nc = 4, byrank = TRUE, diag = FALSE)
+# If D is not a dissimilarity matrix (max(D) > 1), then D is divided by max(D)
+# nc 							number of colours (classes)
+# byrank= TRUE		equal-sized classes
+# byrank= FALSE		equal-length intervals
+# diag = TRUE			print object labels also on the diagonal
+
+# Example:
+# coldiss(spe.dj, nc=9, byrank=F, diag=T)
+
 # Function hcoplot()
 # Reorder and plot dendrogram with colors for groups and legend
 #
@@ -98,17 +110,6 @@ spe.dh <- dist(spe.hel)
   rect.hclust(tor, k=k, border=gro+1, cluster=gr)
   legend("topright", paste("Cluster",1:k), pch=22, col=2:(k+1), bty="n")
 }
-
-# Usage:
-# coldiss(D = dissimilarity.matrix, nc = 4, byrank = TRUE, diag = FALSE)
-# If D is not a dissimilarity matrix (max(D) > 1), then D is divided by max(D)
-# nc 							number of colours (classes)
-# byrank= TRUE		equal-sized classes
-# byrank= FALSE		equal-length intervals
-# diag = TRUE			print object labels also on the diagonal
-
-# Example:
-# coldiss(spe.dj, nc=9, byrank=F, diag=T)
 
 #B-C untrans
 coldiss(spe.db, byrank=FALSE,diag=TRUE)
