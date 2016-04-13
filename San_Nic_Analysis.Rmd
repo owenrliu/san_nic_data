@@ -554,9 +554,14 @@ names(urch.mp)[3:5] <- c("red","purple","mp")
 
 urch.mp.melt <- melt(urch.mp,id.vars=names(urch.mp)[1:2], measure.vars=names(urch.mp)[3:5])
 
+# Red urchins vs. M. pyrifera at different sites
 ggplot(urch.mp, aes(x=mp, y=red)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of M. pyrifera vs. S. franciscanus") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")
-
+S
+#Purple urchins vs. M. pyrifera at different sites
 ggplot(urch.mp, aes(x=mp, y=purple)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of M. pyrifera vs. S. purpuratus") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. purpuratus density (ind./m2)")
+
+#Purple urchins vs. Red urchins? at different sites
+ggplot(urch.mp, aes(x=red, y=purple)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of S.franciscanus vs. S. purpuratus") + xlab("S. franciscanus density (ind./m2)") + ylab("S. purpuratus density (ind./m2)")
 
 
 # Map of stations.
