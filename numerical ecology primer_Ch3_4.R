@@ -130,25 +130,36 @@ spe.t.D16 <- dist(spe.t.chi)
 coldiss(spe.t.D16,diag=TRUE)
 
 ####Chapter 4 Cluster Analysis ####
+data(doubs)
+spe <- doubs$fish
+env <- doubs$env
+spa <- doubs$xy
+spe <- spe[-8,]
+env <- env[-8,]
+spa <- spa[-8,]
+
+# Chord distance
+spe.norm <- decostand(spe,"normalize")
+spe.ch <- vegdist(spe.norm,"euc")
 
 #Single Linkage Agglomerative Clustering
-spe.ch.single <- hclust(spe.dc, method='single')
+spe.ch.single <- hclust(spe.ch, method='single')
 plot(spe.ch.single)
 
 #Complete Linkage Agglomerative Clustering
-spe.ch.complete <- hclust(spe.dc, method='complete')
+spe.ch.complete <- hclust(spe.ch, method='complete')
 plot(spe.ch.complete)
 
 #UPGMA (average distance) agglomerative clustering
-spe.ch.UPGMA <- hclust(spe.dc,method='average')
+spe.ch.UPGMA <- hclust(spe.ch,method='average')
 plot(spe.ch.UPGMA)
 
 #centroid clustering
-spe.ch.centroid <- hclust(spe.dc, method='centroid')
+spe.ch.centroid <- hclust(spe.ch, method='centroid')
 plot(spe.ch.centroid)
 
 #Ward's minimum variance clustering
-spe.ch.ward <- hclust(spe.dc, method='ward')
+spe.ch.ward <- hclust(spe.ch, method='ward')
 plot(spe.ch.ward)
 spe.ch.ward$height <- sqrt(spe.ch.ward$height)
 plot(spe.ch.ward)
@@ -156,43 +167,43 @@ plot(spe.ch.ward)
 ## Cophenetic correlation for the above ##
 # single linkage clustering
 spe.ch.single.coph <- cophenetic(spe.ch.single)
-cor(spe.dc,spe.ch.single.coph)
+cor(spe.ch,spe.ch.single.coph)
 #complete linkage clustering
 spe.ch.comp.coph <- cophenetic(spe.ch.complete)
-cor(spe.dc,spe.ch.comp.coph)
+cor(spe.ch,spe.ch.comp.coph)
 #average clustering
 spe.ch.UPGMA.coph <- cophenetic(spe.ch.UPGMA)
-cor(spe.dc,spe.ch.UPGMA.coph)
+cor(spe.ch,spe.ch.UPGMA.coph)
 #ward clustering
 spe.ch.ward.coph <- cophenetic(spe.ch.ward)
-cor(spe.dc,spe.ch.ward.coph)
+cor(spe.ch,spe.ch.ward.coph)
 #Shepard-like diagrams to illustrate the relationship between a distance matrix and a set of cophenetic matrices
 par(mfrow=c(2,2))
-plot(spe.dc,spe.ch.single.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
-     main=c('Single linkage', paste('Cophenetic correlation',round(cor(spe.dc,spe.ch.single.coph),3))))
+plot(spe.ch,spe.ch.single.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
+     main=c('Single linkage', paste('Cophenetic correlation',round(cor(spe.ch,spe.ch.single.coph),3))))
 abline(0,1)
-lines(lowess(spe.dc,spe.ch.single.coph),col='red')
+lines(lowess(spe.ch,spe.ch.single.coph),col='red')
 
-plot(spe.dc,spe.ch.comp.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
-     main=c('Complete linkage', paste('Cophenetic correlation',round(cor(spe.dc,spe.ch.comp.coph),3))))
+plot(spe.ch,spe.ch.comp.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
+     main=c('Complete linkage', paste('Cophenetic correlation',round(cor(spe.ch,spe.ch.comp.coph),3))))
 abline(0,1)
-lines(lowess(spe.dc,spe.ch.comp.coph),col='red')
+lines(lowess(spe.ch,spe.ch.comp.coph),col='red')
 
-plot(spe.dc,spe.ch.UPGMA.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
-     main=c('UPGMA', paste('Cophenetic correlation',round(cor(spe.dc,spe.ch.UPGMA.coph),3))))
+plot(spe.ch,spe.ch.UPGMA.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
+     main=c('UPGMA', paste('Cophenetic correlation',round(cor(spe.ch,spe.ch.UPGMA.coph),3))))
 abline(0,1)
-lines(lowess(spe.dc,spe.ch.UPGMA.coph),col='red')
+lines(lowess(spe.ch,spe.ch.UPGMA.coph),col='red')
 
-plot(spe.dc,spe.ch.ward.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
-     main=c('Ward clustering', paste('Cophenetic correlation',round(cor(spe.dc,spe.ch.ward.coph),3))))
+plot(spe.ch,spe.ch.ward.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
+     main=c('Ward clustering', paste('Cophenetic correlation',round(cor(spe.ch,spe.ch.ward.coph),3))))
 abline(0,1)
-lines(lowess(spe.dc,spe.ch.ward.coph),col='red')
+lines(lowess(spe.ch,spe.ch.ward.coph),col='red')
 
 #Gower distance (another choice for determining best clustering)
-gow.dist.single <- sum((spe.dc-spe.ch.single.coph)^2)
-gow.dist.comp <- sum((spe.dc-spe.ch.comp.coph)^2)
-gow.dist.UPGMA <- sum((spe.dc-spe.ch.UPGMA.coph)^2)
-gow.dist.ward <- sum((spe.dc-spe.ch.ward.coph)^2)
+gow.dist.single <- sum((spe.ch-spe.ch.single.coph)^2)
+gow.dist.comp <- sum((spe.ch-spe.ch.comp.coph)^2)
+gow.dist.UPGMA <- sum((spe.ch-spe.ch.UPGMA.coph)^2)
+gow.dist.ward <- sum((spe.ch-spe.ch.ward.coph)^2)
 gow.dist.single
 gow.dist.comp
 gow.dist.UPGMA
@@ -261,7 +272,7 @@ asw <- numeric(nrow(spe))
 
 #Retrieve and write the asw values into the vector
 for (k in 2:(nrow(spe)-1)) {
-  sil <- silhouette(cutree(spe.ch.ward,k=k),spe.dc)
+  sil <- silhouette(cutree(spe.ch.ward,k=k),spe.ch)
   asw[k] <- summary(sil)$avg.width
 }
 
@@ -291,7 +302,7 @@ grpdist <- function(X) {
  for (i in 2:(nrow(spe)-1)) {
    gr<-cutree(spe.ch.ward,i)
    distgr <- grpdist(gr)
-   mt <- cor(spe.dc,distgr,method="pearson")
+   mt <- cor(spe.ch,distgr,method="pearson")
    kt[i,2]<-mt
  }
  
@@ -308,28 +319,26 @@ points(k.best,max(kt$r),pch=16,col='red',cex=1.5)
 k<-4
 # Silhouette plot
 cutg <- cutree(spe.ch.ward,k=k)
-sil <- silhouette(cutg,spe.dc)
+sil <- silhouette(cutg,spe.ch)
 silo<- sortSilhouette(sil)
 rownames(silo) <- row.names(spe)[attr(silo,'iOrd')]
-plot(silo,main='Silhouette plot - Chord - Ward',cex.names=0.8,col=cutg+1,nmax.lab=100)
+plot(silo,main='Silhouette plot - Chord - Ward',cex.names=0.8,col=silo+1,nmax.lab=100)
 
 ##Final dendrogram with the selected groups
 # Reorder dendrogram from hclust(). reorder.hclust() reorders objects so that their order in the dissimilarity matrix
 # is respected as much as possible. This does not affect the topology of the dendrogram
-spe.chwo <- reorder.hclust(spe.ch.ward,spe.dc)
+spe.chwo <- reorder.hclust(spe.ch.ward,spe.ch)
 
 #plot reordered dendrogram with group labels
 plot(spe.chwo,hang=-1,xlab="4 groups",sub='',ylab='Height',main='Chord - Ward (reordered)', labels=cutree(spe.chwo,k=k))
 rect.hclust(spe.chwo,k=k)
 
 #plot the final dendrogram with group colors (RGBCMY)
-hcoplot(spe.ch.ward,spe.dc,k=4)
+hcoplot(spe.ch.ward,spe.ch,k=4)
 
 
 ##Other representations of this final result
 # Plot of the 4 Ward clusters on a map of the river
-spa <- doubs$xy
-spa <- spa[-8,]
 plot(spa,asp=1,type='n',main="Four Ward Groups",xlab='x coord(km)',ylab='y coord(km)')
 lines(spa,col='lightblue')
 text(50,10,"Upstream",cex=1.2,col='red')
@@ -345,7 +354,7 @@ legend('bottomright',paste('Group',1:k), pch=(1:k)+20,col=2:(k+1),pt.bg=2:(k+1),
 
 ##Heat map of the distance matrix ordered with the dendrogram
 dend <- as.dendrogram(spe.chwo)
-heatmap(as.matrix(spe.dc), Rowv=dend,symm=TRUE,margin=c(3,3))
+heatmap(as.matrix(spe.ch), Rowv=dend,symm=TRUE,margin=c(3,3))
 #Ordered community table
 # species are ordered by the weighted averages on site scores
 or <- vegemite(spe,spe.chwo)
@@ -402,7 +411,7 @@ asw <- numeric(nrow(spe))
 # Loop to compute average silhouette width fo 2 to 28 groups.
 # asw means "average silhouette width"
 
-for (k in 2:(nrow(spe)-1)) asw[k] <- pam(spe.dc, k, diss=TRUE)$silinfo$avg.width
+for (k in 2:(nrow(spe)-1)) asw[k] <- pam(spe.ch, k, diss=TRUE)$silinfo$avg.width
 k.best<-which.max(asw)
 cat("","Silhouette-optimal number of clusters k =",k.best,"\n", "with an average silhouette width of",max(asw),"\n")
 plot(1:nrow(spe),asw,type="h",main="Choice of the number of clusters",xlab="k (number of groups)", 
@@ -411,7 +420,7 @@ axis(1, k.best, paste("optimum",k.best,sep="\n"),col="red",font=2, col.axis="red
 points(k.best,max(asw),pch=16,col="red",cex=1.5)
 
 # PAM for k = 4 groups (even though it's not really the best choice)
-spe.ch.pam <- pam(spe.dc, k=4, diss=TRUE)
+spe.ch.pam <- pam(spe.ch, k=4, diss=TRUE)
 summary(spe.ch.pam)
 spe.ch.pam.g <- spe.ch.pam$clustering
 spe.ch.pam$silinfo$widths
@@ -421,5 +430,190 @@ table(spe.ch.pam.g,spe.kmeans$cluster)
 #PAM result is quite different from ward clustering and k means
 # Silhouette profile for k=4, k-means and PAM methods
 par(mfrow=c(1,2))
-plot(silhouette(spe.kmeans$cluster,spe.dc),main="Silhouette plot - k-means", cex.names=0.8, col=spe.kmeans$cluster+1)
-plot(silhouette(spe.ch.pam),main="Silhouette plot - PAM", cex.names=0.8, col=spe.ch.pam$silinfo$widths+1)
+plot(silhouette(spe.kmeans$cluster,spe.ch),main="Silhouette plot - k-means", cex.names=0.8, col=sort(spe.kmeans$cluster)+1)
+plot(silhouette(spe.ch.pam),main="Silhouette plot - PAM", cex.names=0.8, col=sort(spe.ch.pam$silinfo$widths[,"cluster"])+1)
+
+# Plot of the 4 k-means clusters on a map of the Doubs river
+# **************************************************************
+dev.off()
+plot(spa, asp=1,type="n",main="Four k-means groups", xlab="x-coordinate (km)",ylab="y coordinate (km)")
+lines(spa,col="light blue")
+text(50,10,"Upstream",cex=1.2, col="red")
+text(25,115,"Downsteam",cex=1.2,col="red")
+
+grKM <- spe.kmeans$cluster
+k <- length(levels(factor(grKM)))
+
+for(i in 1:k) points(spa[grKM==i,1],spa[grKM==i,2], pch=i+20, cex=3,col=i+1, bg=i+1)
+
+text(spa,row.names(spa), cex=0.8,col="white",font=2)
+legend("bottomright",paste("Group", 1:k), pch=(1:k)+20, col=2:(k+1),pt.bg=2:(k+1),pt.cex=2,bty="n")
+
+#### 4.9.1 Comparing a Typology with External Data (ANOVA approach) ####
+
+# Relationships between fish clusters and 4 environmental variables based on the k-means clustering results
+# ***********************************************************************
+
+attach(env)
+# Boxplots of quantitative environmental variables :
+# Altitude, Slope, Oxygen, Ammonium
+
+par(mfrow=c(2,2))
+
+boxplot(sqrt(alt) ~ spe.kmeans$cluster, main="Altitude", las=1, ylab="sqrt (alt)",col=2:5,varwidth=TRUE)
+boxplot(log(slo) ~ spe.kmeans$cluster, main="Slope", las=1, ylab="log(slo)",col=2:5,varwidth=TRUE)
+boxplot(oxy ~ spe.kmeans$cluster, main="Oxygen", las=1, ylab="oxy",col=2:5,varwidth=TRUE)
+boxplot(sqrt(amm) ~ spe.kmeans$cluster, main="Ammonium", las=1, ylab="sqrt (amm)",col=2:5,varwidth=TRUE)
+
+# Test of ANOVA assumptions
+# Normality of residuals
+shapiro.test(resid(lm(sqrt(alt) ~ as.factor(spe.kmeans$cluster))))
+shapiro.test(resid(lm(log(slo) ~ as.factor(spe.kmeans$cluster))))
+shapiro.test(resid(lm(oxy ~ as.factor(spe.kmeans$cluster))))
+shapiro.test(resid(lm(sqrt(amm) ~ as.factor(spe.kmeans$cluster))))
+
+# Homogeneity of variances
+bartlett.test(sqrt(alt),as.factor(spe.kmeans$cluster)) #This one has heterogeneous variances, and is not appr. for ANOVA
+bartlett.test(log(slo),as.factor(spe.kmeans$cluster))
+bartlett.test(oxy,as.factor(spe.kmeans$cluster))
+bartlett.test(sqrt(amm),as.factor(spe.kmeans$cluster))
+
+# ANOVA of the testable variables
+summary(aov(log(slo) ~ as.factor(spe.kmeans$cluster)))
+summary(aov(oxy ~ as.factor(spe.kmeans$cluster)))
+summary(aov(sqrt(amm) ~ as.factor(spe.kmeans$cluster)))
+
+# Kruskal-Wallis test of the other variable (altitude)
+kruskal.test(alt ~ as.factor(spe.kmeans$cluster))
+
+detach(env)
+
+#### 4.9.2 Comparing Two Typologies (Contingency Table Approach) ####
+# What if we produced two indepedent typologies, one from species data and one from environmental, and compare them?
+
+# Contingency table of two typologies
+# ***********************************
+
+# Environment-based typology (similar to Ch. 2)
+env2 <- env[,-1]
+env.de <- vegdist(scale(env2),"euc") # Dissimilarity matrix
+env.kmeans <- kmeans(env.de, centers=4, nstart=100)
+env.KM.4 <- env.kmeans$cluster
+
+# Table crossing the k-means and environment 4-group typologies
+table(as.factor(spe.kmeans$cluster), as.factor(env.kmeans$cluster))
+
+#### 4.10 Species ASsemblages ####
+# Many approaches exist to the problem of identifying species associations in a data set. Here are some examples
+
+#### 4.10.1 Simples statistics on group contents ####
+# Using the previous sections, we can compute simple statistics from typologies (clustering) and look for 
+# species that are more present, abundant, or specific in each cluster of sites
+
+# Mean abundances on k-means site clusters
+# ****************************************
+
+groups <- as.factor(spe.kmeans$cluster)
+spe.means <- matrix(0,ncol(spe), length(levels(groups)))
+row.names(spe.means) <- colnames(spe)
+for(i in 1:ncol(spe)) spe.means[i,] <- tapply(spe[,i], spe.kmeans$cluster,mean)
+
+# Mean species abundances of the four groups
+group1 <- round(sort(spe.means[,1], decreasing=TRUE),2)
+group2 <- round(sort(spe.means[,2], decreasing=TRUE),2)
+group3 <- round(sort(spe.means[,3], decreasing=TRUE),2)
+group4 <- round(sort(spe.means[,4], decreasing=TRUE),2)
+
+# Species with abundances greater than group mean species abundance
+group1.domin <- which(group1>mean(group1))
+group1
+group1.domin
+group2.domin <- which(group2>mean(group2))
+group2
+group2.domin
+group3.domin <- which(group3>mean(group3))
+group3
+group3.domin
+group4.domin <- which(group4>mean(group4))
+group4
+group4.domin
+
+#### 4.10.2 Kendall's W Coefficient of Concordance ####
+# "An overall test of independence of species is first carried out. If the null hypothesis is rejected, one looks
+# for groups of correlated species and, within each group, tests the contribution of each species to the overall
+# statistic, using a permutation test"
+# Note: the search for assemblages is done without any reference to a typology of sites known a priori, and aims
+# to find the most encompassing assemblages, i.e., the smallest number of groups containing the largest number of
+# positively and significantly associated species
+
+# Kendall's W
+# ***************************************************
+
+# Extraction of the most abundant species
+sp.sum <- apply(spe, 2, sum)
+spe.sorted <- spe[,order(sp.sum,decreasing=TRUE)]
+spe.small <- spe.sorted[,1:20]
+
+# Transformation of species data and transposition
+spe.small.hel <- decostand(spe.small,"hellinger")
+spe.small.std <- decostand(spe.small.hel, "standardize")
+spe.small.t <- t(spe.small.std) # transpose (sites x species to species x sites)
+
+# k-means partitioning of species
+spe.t.kmeans.casc <- cascadeKM(spe.small.t, inf.gr=2,sup.gr=8,iter=100,criterion="calinski")
+plot(spe.t.kmeans.casc,sortg=TRUE)
+# result indicates that 2 groups may be a good choice
+
+# The partition into 2 groups is found in column 1 of the object $partition
+clusters <- spe.t.kmeans.casc$partition[,1]
+clusters
+
+# Now that we have two groups of species, let us run a global Kenall W test on these groups
+spe.kendall.global <- kendall.global(spe.small.hel,clusters)
+spe.kendall.global
+
+# NOTE: If the corrected permutational p-values are equal to or small than 0.05, you can consider that all groups
+# are globally significant, i.e. on the whole, they contain species that are concordant (not necessarily all
+# species, but at least some). If the corrected p-values for some groups are not significant, it indicates that
+# these groups have to subdivided into smaller groups.  To see WHICH species in each group are significantly
+# concordant, we run a posteriori tests:
+
+spe.kendall.post <- kendall.post(spe.small.hel,clusters, nperm=9999)
+spe.kendall.post
+
+#### 4.10.3 Species Assemblages in Presence-Absence Data ####
+# (skipped for now, p. 95 in text)
+
+#### 4.10.4 IndVal: Species Indicator Values ####
+# From Dufrene and Legendre (1997), invdval index
+# A high indicator value is obtained by a combination of large mean abundance within a group compared to
+# the other groups (specificity), and presence in most sites of that group (fidelity)
+# "The indval approach looks for species that are both necessary and sufficient, i.e. if you find that
+# species you should be in that type, and if you in that type you should find that species."
+
+# Various ways to group sites (e.g. many of the previous sections), but clustering by species is a bit
+# circular.  Instead, maybe cluster sites on the basis of independent data (e.g. env. variables).
+# Then indicator species can be considered indicator in a true sens of the word (indicative of the 
+# ecological conditions of the group).
+
+# Species indicator values example, using distance from source as the explanatory variable
+
+# Divide sites into 4 groups depending on the distance to the source of the river
+das.D1 <- dist(data.frame(das=env$dfs, row.names=rownames(env)))
+dasD1.kmeans <- kmeans(das.D1, centers=4, nstart=100)
+dasD1.kmeans$cluster
+
+# Indicator species for this typology of the sites
+(iva <- indval(spe, dasD1.kmeans$cluster))
+# objects : relfrq is the relative freq of the species in each group
+# relabu is the relative abundance of the species across groups
+# indval is the indicator value of each species
+# The two next items are extracted from the indval table
+# the last contains the results of the permutation tests
+
+# Table of the significant indicator species
+gr <- iva$maxcls[iva$pval<=0.05]
+iv <- iva$indcls[iva$pval<=0.05]
+pv <- iva$pval[iva$pval<=0.05]
+fr <- apply(spe>0, 2, sum)[iva$pval<=0.05]
+fidg <- data.frame(group=gr, indval=iv, pvalue=pv, freq=fr)
