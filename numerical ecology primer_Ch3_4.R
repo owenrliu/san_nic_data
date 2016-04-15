@@ -5,6 +5,8 @@ library(cluster)
 library(FD)
 library(RColorBrewer)
 library(labdsv)
+library(mvpart)
+library(MVPARTwrap)
 
 
 
@@ -617,3 +619,129 @@ iv <- iva$indcls[iva$pval<=0.05]
 pv <- iva$pval[iva$pval<=0.05]
 fr <- apply(spe>0, 2, sum)[iva$pval<=0.05]
 fidg <- data.frame(group=gr, indval=iv, pvalue=pv, freq=fr)
+
+# Other package indicspecies computes different indicator species indices
+
+#### 4.11 Multivariate Regression Trees: Constrained Clustering ####
+
+# For a description, see text p. 99
+# Computation of MRT consists in two procedures running together:
+# 1. constrained partitioning of the data, 
+# Done by progressively splitting sites into two groups by minimizing SS of an
+# explanatory variable (see text).  An important characteristic is the relative error (RE), i.e. the sum of within-group SS
+# over all leaves divided by the overall SS of the data. In other words, the fraction of variance not explained by the tree.  
+# Without the next step (cross-validation), you would keep the solution minimizing the RE. However, this is a more explanatory (R^2)
+# approach rather than a predictive approach; predictive accuracy is better estimated from the cross-validated relative error
+# (CVRE)
+# 2. Cross-validation of the partitions and pruning of the tree.
+# At which level should we cut a tree so as to retain the most sensible partition?
+# We can use a subset of the objects as a training set to construct the tree, and the remaining objects as a test set to
+# validate the results by allocating them to the constructed groups.  Obviously, a good predictive tree assigns the objects
+# of the test set correctly (i.e. their explanatory variables are close to the variables of their assigned group, the 
+# predicted values).  The measure of predictive error (CVRE) is how the tree is assessed. (see text for formula). Basically,
+# CVRE can be defined as the ratio between the dispersion unexplained by the tree (summed of the k test sets), divided by
+# the overall dispersion of the response data.  CVRE is 0 for perfect predictors and close to 1 for a poor set of predictors.
+# Description of computational procedure in text
+# Note: Euclidean-based method, so some pre-transformation of variables is sometimes required
+
+# Multivariate regression trees
+# **********************************
+
+spe.ch.mvpart <- mvpart(data.matrix(spe.norm) ~ ., env, margin=0.08, cp=0, xv="pick", xval=nrow(spe), xvmult=100, which=4)
+# Interactive, so we then click on the desired partition size
+summary(spe.ch.mvpart)
+printcp(spe.ch.mvpart)
+# Interpretation- see text. We can look closer at the objects of each node
+# Residuals of MRT
+par(mfrow=c(1,2))
+hist(residuals(spe.ch.mvpart),col="grey")
+plot(predict(spe.ch.mvpart), residuals(spe.ch.mvpart), main="Residuals vs. Predicted")
+abline(h=0,lty=3,col="grey")
+
+# Group composition
+spe.ch.mvpart$where
+
+# Group identity
+(groups.mrt <- levels(as.factor(spe.ch.mvpart$where)))
+
+# Fish composition of the first leaf
+spe.norm[which(spe.ch.mvpart$where==groups.mrt[1]),]
+
+# Environmental variables of first leaf
+env[which(spe.ch.mvpart$where==groups.mrt[1]),]
+
+# Table and pie charts of fish composition of leaves
+leaf.sum <- matrix(0, length(groups.mrt), ncol(spe))
+colnames(leaf.sum) <- colnames(spe)
+for (i in 1:length(groups.mrt)) {
+  leaf.sum[i,] <- apply(spe.norm[which(spe.ch.mvpart$where==groups.mrt[i]),], 2, sum)
+}
+leaf.sum
+par(mfrow=c(2,2))
+for(i in 1:length(groups.mrt)) {
+  pie(which(leaf.sum[i,]>0), radius=1, main=c("leaf #",groups.mrt[i]))
+}
+
+# MVPARTwrap is a wrapper for mvpart, allowing for the extraction of other numerical results
+# Extracting MRT results from an mvpart object
+spe.ch.mvpart.wrap <- MRT(spe.ch.mvpart, percent=10, species=colnames(spe))
+summary(spe.ch.mvpart.wrap)
+
+#### 4.11.4 Combining MRT and IndVal ####
+# We can submit the MRT partition to a search for indicator species. This is better than visual examination of the
+# results for the identificaiton of "discriminant" species: we can test the significance of the indicator values
+# Indicator species search on the MRT result
+spe.ch.MRT.indval <- indval(spe.norm,spe.ch.mvpart$where)
+spe.ch.MRT.indval$pval # Probability
+
+# For each significant species, find the leaf with the highest IndVal
+spe.ch.MRT.indval$maxcls[which(spe.ch.MRT.indval$pval<=0.05)]
+
+# IndVal value in the best leaf for each significant species
+spe.ch.MRT.indval$indcls[which(spe.ch.MRT.indval$pval<=0.05)]
+
+# MRT as a "chronological" clustering method - see text (may be useful for time-series?)
+
+#### 4.12 A Very Different Approach: Fuzzy Clustering ####
+# A different family of hierarchical and non-hierarchical methods has been developed, fuzzy clustering, which
+# recognizes that cluster limits may not be so clear-cut as one would like them to be
+
+# 4.12.1 Fuzzy c-means clustering using cluster's function fanny()
+# c-means clustering associates to all objects a series of membership values measuring tht estrength of their
+# memberships in the various clusters. membership values add up to 1 for each object
+# fanny() can accept site-by-species or directly a distance matrix
+# its plot function can return two diagrams: an ordination of the clusters and a silhouette plot
+
+# Fuzzy c-means clustering of the fish species data
+# ****************************************************
+
+k <- 4 #choose the number of clusters
+spe.fuz <- fanny(spe.ch,k=k,memb.exp=1.5)
+summary(spe.fuz)
+spefuz.g <- spe.fuz$clustering
+
+# Site membership
+spe.fuz$membership
+# Nearest crisp clustering
+spe.fuz$clustering
+# Silhouette plot
+plot(silhouette(spe.fuz), main= "Silhouette plot - Fuzzy clustering", cex.names=0.8, col=spe.fuz$silinfo$widths+1)
+# Ordination of fuzzy clusters (PCoA)
+dc.pcoa <- cmdscale(spe.ch)
+dc.scores <- scores(dc.pcoa,choices=c(1,2))
+# Ordination plot of fuzzy clustering results
+plot(scores(dc.pcoa), asp=1,type="n",main="Ordination of fuzzy clusters (PCoA)")
+abline(h=0,lty="dotted")
+abline(v=0,lty="dotted")
+for(i in 1:k) {
+  gg<-dc.scores[spefuz.g==i,]
+  hpts<-chull(gg)
+  hpts<-c(hpts,hpts[1])
+  lines(gg[hpts,],col=i+1)
+}
+stars(spe.fuz$membership, location=scores(dc.pcoa),draw.segments=TRUE,add=TRUE,scale=FALSE,len=0.1,col.segments=2:(k+1))
+legend(locator(1),paste("Cluster",1:k,sep=" "),pch=15,pt.cex=2,col=2:(k+1),bty="n")
+
+# Objects with clear membership are clearly show, and those with fuzzy membership as well, in the ordination plot (more
+# about this method in the next chapter!)
+
