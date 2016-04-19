@@ -355,3 +355,51 @@ spe.brayl.pcoa$values
 # PCoA on a Bray-Curtis dissimilarity matrix with Cailliez correction
 spe.brayc.pcoa <- pcoa(spe.bray, correction="cailliez")
 spe.brayc.pcoa$values
+
+#### 5.6 Nonmetric Mltidimensional Scaling ####
+
+# if the priority is not to preserve the exact distances, but rather to represent well the ordering 
+# relationships among objects in a small and specified number of axes, NMDS may be the solution
+# Can use any distance matrix
+# Can cope with missing distances
+# Not an eigenvalue technique
+# see text for generalized procedure
+
+## 5.6.2 Application to the fish data 
+# NMDS applied to the fish species - Bray-Curtis distance matrix
+# ****************************************************************
+
+spe.nmds <- metaMDS(spe,distance="bray")
+spe.nmds
+spe.nmds$stress
+plot(spe.nmds,type="t",main=paste("NMDS/Bray - Stress = ", round(spe.nmds$stress,3)))
+# Goodness-of-fit can be measured with a regression of NMDS distances on the original ones
+# Shepard plot and g.o.f
+# ************************
+par(mfrow=c(1,2))
+stressplot(spe.nmds,main="Shephard Plot")
+gof=goodness(spe.nmds)
+plot(spe.nmds,type="t",main="Goodness of fit")
+points(spe.nmds,display="sites",cex=gof*100)
+
+# Add colours from a clustering results to an NMDS plot
+# ****************************************************
+
+# Ward clustering of Bray-Curtis dissimilarity matrix
+# and extraction of four groups
+spe.bray.ward <- hclust(spe.bray, "ward")
+spe.bw.groups <- cutree(spe.bray.ward,k=4)
+grp.lev <- levels(factor(spe.bw.groups))
+
+# Combination with NMDS
+sit.sc <- scores(spe.nmds)
+p <- ordiplot(sit.sc, type="n", main="NMDS/Bray + clusters Ward/Bray")
+for(i in 1:length(grp.lev)) points(sit.sc[spe.bw.groups==i,],pch=(14+i), cex=2, col=i+1)
+text(sit.sc,row.names(spe),pos=4,cex=0.7)
+
+#Add the dendrogram
+ordicluster(p, spe.bray.ward,col="dark grey")
+legend(locator(1), paste("Group",c(1:length(grp.lev))),pch=14+c(1:length(grp.lev)), col=1+c(1:length(grp.lev)), pt.cex=2)
+
+#### 5.7 Handwritten Ordination Function ####
+# See text for explanation and code...

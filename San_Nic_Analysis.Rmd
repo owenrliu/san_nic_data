@@ -40,6 +40,35 @@ cover.dat$Date <- betterDates(cover.dat)
 midwaterfish.dat$Date <- betterDates(midwaterfish.dat)
 
 ####helpful functions####
+# Plot eigenvalues and percentages of variation of an ordination object
+# Kaiser rule and broken stick model
+# Usage:
+# evplot(ev)
+# where ev is a vector of eigenvalues
+
+# License: GPL-2 
+# Author: Francois Gillet, 25 August 2012
+
+evplot <- function(ev)
+{
+  # Broken stick model (MacArthur 1957)
+  n <- length(ev)
+  bsm <- data.frame(j=seq(1:n), p=0)
+  bsm$p[1] <- 1/n
+  for (i in 2:n) bsm$p[i] <- bsm$p[i-1] + (1/(n + 1 - i))
+  bsm$p <- 100*bsm$p/n
+  # Plot eigenvalues and % of variation for each axis
+  op <- par(mfrow=c(2,1))
+  barplot(ev, main="Eigenvalues", col="bisque", las=2)
+  abline(h=mean(ev), col="red")
+  legend("topright", "Average eigenvalue", lwd=1, col=2, bty="n")
+  barplot(t(cbind(100*ev/sum(ev), bsm$p[n:1])), beside=TRUE, 
+          main="% variation", col=c("bisque",2), las=2)
+  legend("topright", c("% eigenvalue", "Broken stick model"), 
+         pch=15, col=c("bisque",2), bty="n")
+  par(op)
+}
+
 ## multiplot function
 multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
   library(grid)
@@ -288,7 +317,7 @@ multiplot(plotlist=mfishdiv.site.plotlist,cols=2)
 ```
 
 
-Let's do a cluster analysis.  There are a number of ways we could go about this, but let's start with looking looking at the clustering of sites, combining species abundance data from all years for each site.  Later, we can cluster years within the timeseries of each site.  We'll use the benthic fish data to start.
+Let's do a cluster analysis.  There are a number of ways we could go about this, but let's start with looking at the clustering of sites, combining species abundance data from all years for each site.  Later, we can cluster years within the timeseries of each site.  We'll use the benthic fish data to start.
 
 ```{r site clusters based on species density}
 #aggregate over years (i.e., aggregate density just by site and species)
@@ -571,4 +600,135 @@ stations.spa <- readOGR(dsn = path.expand(dir_spatial),layer="stations")
 sta.coords<-as.data.frame(stations.spa@coords)
 ggplot() + geom_polygon(data=san_nic_base,aes(x=long,y=lat), fill='green3',col='black')+
   geom_text(data=sta.coords,aes(x=coords.x1,y=coords.x2, label=row.names(sta.coords)))
+```
+
+
+Ordination of years within sites.  Before, we looked at sites across all years.  Now, let's look within individual sites, where the "objects" (rows, samples) are years, and the columns (variables) are the species.  This time, we'll use the benthic density data
+
+```{r clustering and ordination of years by site}
+#aggregate sites by year
+sites <- aggregate(list(dens=benthdens.dat$Density),by=list(station=benthdens.dat$Station,period=benthdens.dat$Period,
+                                                              species=benthdens.dat$SpeciesCode), FUN=mean)
+sit.names <- unique(sites$station)
+
+# Create datasets for each site, and cast to matrices of periodxspecies
+for(i in sit.names) {
+  dat.t <- subset(sites,sites$station==i) #subset of 'master' (long form)
+  dat.t <- acast(dat.t,period~species,value.var="dens") # cast to matrix
+  dat.t <- as.data.frame((dat.t))
+  datname <- paste0("site",i)
+  assign(datname,dat.t) # assign raw data to variable name "site'i'"
+  dat.norm <- decostand(dat.t,"normalize") # Euclidean norm (object vectors (periods) normalized to length 1)
+  dat.norm <- dist(dat.norm) # Chord distance matrix
+  distname <- paste0(datname,".dc") # Name for distance matrix
+  assign(distname,dat.norm) # assign distance matrix to variable name "site'i'.dc" (for "distance-chord")
+}
+
+# Let's start with Site 7, and compute a clustering result (using UPGMA) and an ordination (correspondence)
+dev.off()
+site7.UPGMA <- hclust(site7.dc,method="average")
+plot(site7.UPGMA, main="Clusters - UPGMA")
+
+#cophenetic comparison to chord distance and shepard diagram
+site7.UPGMA.coph <- cophenetic(site7.UPGMA)
+cor(site7.dc,site7.UPGMA.coph)
+
+plot(site7.dc,site7.UPGMA.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
+     main=c('Single linkage', paste('Cophenetic correlation',round(cor(site7.dc,site7.UPGMA.coph),3))))
+abline(0,1)
+lines(lowess(spe.dc,spe.ch.single.coph),col='red')
+
+#Plot the fusion level values of the UPGMA clustering
+plot(site7.UPGMA$height,nrow(site7):2,type='S',main='Fusion levels - Chord - UPGMA',ylab='k (number of clusters)',
+     xlab='h (node height)',col='grey')
+text(site7.UPGMA$height,nrow(site7):2,nrow(site7):2, col='red',cex=0.8)
+
+## How many clusters (groups?)
+# Optimal number of clusters according to silhouette widths(Rousseeuw quality index)
+# Plot average silhouette widths (using UPGMA clustering) for all partitions except for the trivial partition in a single group
+# First, create empty vector in which the asw values will be written
+asw <- numeric(nrow(site7))
+
+#Retrieve and write the asw values into the vector
+for (k in 2:(nrow(site7)-1)) {
+  sil <- silhouette(cutree(site7.UPGMA,k=k),site7.dc)
+  asw[k] <- summary(sil)$avg.width
+}
+
+# Best (largest) silhouette width
+k.best <- which.max(asw)
+
+#the plot is produced by plot.silhouette
+par(mfrow=c(1,1))
+plot(1:nrow(site7),asw,type='h',main="Silhouette - optimal number of clusters, UPGMA",xlab='k (number of groups)',
+     ylab="Average silhouette width")
+axis(1,k.best,paste('optimum',k.best,sep="\n"),col='red',font=2,col.axis='red')
+points(k.best,max(asw),pch=16,col='red',cex=1.5)
+
+cat("", "Silhouette - Optimal number of clusters k =", k.best,'\n', "with an average silhouette width of", max(asw),"\n")
+
+#Mantel statistic on UPGMA clustering
+ kt <- data.frame(k=1:nrow(site7), r=0)
+ 
+ for (i in 2:(nrow(site7)-1)) {
+   gr<-cutree(site7.UPGMA,i)
+   distgr <- grpdist(gr)
+   mt <- cor(site7.dc,distgr,method="pearson")
+   kt[i,2]<-mt
+ }
+ 
+kt
+k.best <- which.max(kt$r)
+
+plot(kt$k,kt$r,type='h',main='Mantel - optimal number of clusters - UPGMA',xlab='k (number of groups)',
+    ylab="Pearson's correlation")
+axis(1,k.best,paste('optimum',k.best,sep="\n"),col='red',font=2,col.axis='red')
+points(k.best,max(kt$r),pch=16,col='red',cex=1.5)
+
+## we choose k=4 as our final number of groups, and UPGMA clustering as our best-option dendrogram
+# Silhouette plot of final partition
+k<-2
+# Silhouette plot
+cutg <- cutree(site7.UPGMA,k=k)
+sil <- silhouette(cutg,site7.dc)
+silo<- sortSilhouette(sil)
+rownames(silo) <- row.names(site7)[attr(silo,'iOrd')]
+plot(silo,main='Silhouette plot - Chord - Ward',cex.names=0.8,col=silo+1,nmax.lab=100)
+
+# CA on Site 7 raw species dataset
+# **********************************
+# Compute CA
+site7.ca <- cca(site7)
+site7.ca
+summary(site7.ca) # scaling 2 means chi-sq distance preserved between species
+summary(site7.ca, scaling=1) # scaling 1 means chi-sq distance preserved between objects (periods)
+
+# Plot eigenvalues and % of variance for each CA axis
+(site7.ev<-site7.ca$CA$eig)
+evplot(site7.ev)
+
+## CA biplots
+# ********************
+par(mfrow=c(1,2))
+
+#scaling 1: periods are centroids of species
+plot(site7.ca,scaling=1,main="CA of benthic densities - biplot scaling 1")
+#scaling 2: species are centroids of periods
+plot(site7.ca,scaling=2,main="CA of benthic densities - biplot scaling 2")
+
+## CA plus clustering result
+
+# extraction of groups
+site7.UPGMA.groups <- cutree(site7.UPGMA,k=2)
+grp.lev <- levels(factor(site7.UPGMA.groups))
+
+# Combination with CA
+sit.sc <- scores(site7.ca,display="wa",scaling=1)
+p <-plot(site7.ca, display="wa",scaling=1, type="n", main="CA + clusters UPGMA/Chord")
+for(i in 1:length(grp.lev)) points(sit.sc[site7.UPGMA.groups==i,],pch=(14+i), cex=2, col=i+1)
+text(sit.sc,row.names(site7),pos=4,cex=0.7)
+
+#Add the dendrogram
+ordicluster(p, site7.UPGMA,col="dark grey")
+legend(locator(1), paste("Group",c(1:length(grp.lev))),pch=14+c(1:length(grp.lev)), col=1+c(1:length(grp.lev)), pt.cex=2)
 ```
