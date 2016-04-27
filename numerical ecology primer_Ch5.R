@@ -130,12 +130,12 @@ evplot <- function(ev)
 
 #### 5.3 Principal Component Analysis ####
 # remember- chooses first axis of the scatter that has the greatest dimension (variance), followed by the next,
-# orthogonal axis.  PCA sort of carries out a 'rotation' of the orginial system of axes, such that successive
+# orthogonal axis.  PCA sort of carries out a 'rotation' of the original system of axes, such that successive
 # new axes are orthogonal to one another.
 # Works on a dispersion matrix S.
 
 ## 5.3.2 PCA on environmental variables using rda()
-# since the bariables are expressed in different measurement scales, we compute a PCA on the correlation matrix
+# since the variables are expressed in different measurement scales, we compute a PCA on the correlation matrix
 # (covariances of standardized variables)
 # packages
 library(ade4)
@@ -398,6 +398,7 @@ for(i in 1:length(grp.lev)) points(sit.sc[spe.bw.groups==i,],pch=(14+i), cex=2, 
 text(sit.sc,row.names(spe),pos=4,cex=0.7)
 
 #Add the dendrogram
+par(mfrow=c(1,1))
 ordicluster(p, spe.bray.ward,col="dark grey")
 legend(locator(1), paste("Group",c(1:length(grp.lev))),pch=14+c(1:length(grp.lev)), col=1+c(1:length(grp.lev)), pt.cex=2)
 
