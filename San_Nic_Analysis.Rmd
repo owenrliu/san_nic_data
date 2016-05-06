@@ -29,6 +29,13 @@ midwaterfish.dat <-  read.csv(file=paste(W_D,'/data/Midwater fish density raw da
 #spp key for the dataset
 spp.key <- read.csv(file=paste(W_D,'/data/Table4_Species_sampled.csv',sep=''))
 
+ott <- read.csv(file=paste(W_D,"/data/Table2_independent_sea_otters.csv",sep=""))
+ott$Date<-as.Date(ott$Date,format="%m/%d/%Y")
+plot(ott$Date,ott$West, main="Independent Sea Otters Observed at SNI",xlab="Year",ylab="Number of Otters",type="l",col="darkgreen",
+     ylim=c(0,50),lwd=2)
+lines(ott$Date,rowSums(cbind(ott$North,ott$South)),col="red",lwd=2)
+legend("topleft",col=c("darkgreen","red"),legend=c("West","North and South"),lty=1)
+
 #fix dates in the datasets to be more readable by R
 betterDates <-function(dat) {
   dates<-as.Date(as.character(dat$Date),format="%m/%d/%y")
@@ -200,7 +207,7 @@ spp.abun.cover<-arrange(aggregate(list(meancover=cover.dat$Cover),by=list(specie
 
 #function for a given species utilizing the benthic cover dataset
 benthcover.spp.viz <- function (spp) {
-  #INPUTS: spp is the species code (taken from the spp.key above), res is the resolution (site level (denoted 'Station') or quadrat level(denoted "Quadrat"))
+
   spp.dat <- subset(cover.dat,cover.dat$SpeciesCode==spp)
   #subset for the given species
   timeseries <- aggregate(list(Cover=spp.dat$Cover), by=list(Date=spp.dat$Date,Site=spp.dat$Station),FUN=mean)
@@ -210,18 +217,41 @@ benthcover.spp.viz <- function (spp) {
 }
 
 # and for density
-spp.abun.benthdens<-arrange(aggregate(list(meancover=benthdens.dat$Density),by=list(species=benthdens.dat$SpeciesCode),FUN=mean), desc(meancover))
+spp.abun.benthdens<-arrange(aggregate(list(meandens=benthdens.dat$Density),by=list(species=benthdens.dat$SpeciesCode),FUN=mean), desc(meandens))
 
-#function for a given species utilizing the benthic cover dataset
+#add the species names for easier lookup later
+spp.abun.benthdens<-merge(spp.abun.benthdens,spp.key[spp.key$DataSet=="Benthic density",-3],by.x="species",by.y="SpeciesCode")
+
+#function for a given species utilizing the benthic density dataset
 benthdens.spp.viz <- function (spp) {
-  #INPUTS: spp is the species code (taken from the spp.key above), res is the resolution (site level (denoted 'Station') or swath level(denoted "Swath"))
+
   spp.dat <- subset(benthdens.dat,benthdens.dat$SpeciesCode==spp)
   #subset for the given species
   timeseries <- aggregate(list(Density=spp.dat$Density), by=list(Date=spp.dat$Date,Site=spp.dat$Station),FUN=mean)
+  tot <- aggregate(list(Density=spp.dat$Density), by=list(Period=spp.dat$Period),FUN=mean)
   timeseries$Site <- as.factor(timeseries$Site)
-  spp.plot <- ggplot(timeseries,aes(x=Date,y=Density,group=Site,color=Site)) + geom_line()
-  return(list(tseries=timeseries,plot=spp.plot))
+  spp.plot <- ggplot(timeseries,aes(x=Date,y=Density,group=Site,color=Site)) + geom_line() + xlab("Year")+ylab("Density (ind./m2)")
+  totplot <- ggplot(tot,aes(x=Period,y=Density)) + geom_line()
+  
+  #Returns total density by period, a timeseries plot broken up by site, and a plot of total mean density across sites
+  return(list(tot=tot,tseries=timeseries,plot=spp.plot,totplot=totplot))
 }
+
+# Some interesting species
+s_frans <- benthdens.spp.viz(29) # red urchins
+s_purp <- benthdens.spp.viz(30) # purple urchins
+patiria <- benthdens.spp.viz(24) # patiria miniata (bat star)
+pisaster <- benthdens.spp.viz(92) # pisaster giganteus (giant sea star)
+
+s_frans$plot + ggtitle("Red Urchin Density by Site Over Time")
+s_frans$totplot + ggtitle("Mean Red Urchin Density Across All Sites")
+s_purp$plot + ggtitle("Purple Urchin Density by Site Over Time")
+s_purp$totplot + ggtitle("Mean Purple Urchin Density Across All Sites")
+patiria$plot + ggtitle("Bat Star Density by Site Over Time")
+patiria$totplot + ggtitle("Mean Bat Star Density Across All Sites")
+pisaster$plot + ggtitle("Giant Sea Star Density by Site Over Time")
+pisaster$totplot + ggtitle("Mean Giant Sea Star Density Across All Sites")
+
 ```
 
 Diversity index for within-site/year 'samples'. Shannon-Weaver used.
@@ -585,7 +615,25 @@ urch.mp.melt <- melt(urch.mp,id.vars=names(urch.mp)[1:2], measure.vars=names(urc
 
 # Red urchins vs. M. pyrifera at different sites
 ggplot(urch.mp, aes(x=mp, y=red)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of M. pyrifera vs. S. franciscanus") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")
-S
+
+#With arrows (a "path" representation of change over time)
+ggplot(urch.mp, aes(x=mp, y=red)) +geom_path(aes(col=period), arrow=arrow(type="closed",length=unit(0.05,"inches"))) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of M. pyrifera vs. S. franciscanus") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")
+
+# Individual stations
+urch.mp.7 <- subset(urch.mp,urch.mp$station==7)
+urch.mp.2 <- subset(urch.mp,urch.mp$station==2)
+urch.mp.3 <- subset(urch.mp,urch.mp$station==3)
+
+#Station 7 Sandy Cove
+ggplot(data=urch.mp.7, aes(x=mp, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(mp, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm"))) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=40) +ggtitle("Density of M. pyrifera vs. S. franciscanus, Sandy Cove") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.02,nudge_y=0.5,size=3)
+
+#Station 2
+ggplot(data=urch.mp.2, aes(x=mp, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(mp, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm"))) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=40) +ggtitle("Density of M. pyrifera vs. S. franciscanus, West End 'Urchin'") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x=0.01,nudge_y=0.1,size=3)
+
+#Station 3
+ggplot(data=urch.mp.3, aes(x=mp, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(mp, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm"))) +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of M. pyrifera vs. S. franciscanus, West End 'Kelp'") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.02,nudge_y=0.1,size=3)
+
+
 #Purple urchins vs. M. pyrifera at different sites
 ggplot(urch.mp, aes(x=mp, y=purple)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of M. pyrifera vs. S. purpuratus") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. purpuratus density (ind./m2)")
 

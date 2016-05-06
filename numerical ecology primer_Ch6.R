@@ -625,3 +625,4 @@ plot(coia.chem.topo)
 # See text p. 216 for interpretation
 
 #### 6.10 Multiple Factor Analysis is skipped here, but may be useful (text p. 220)
+
