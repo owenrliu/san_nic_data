@@ -350,14 +350,14 @@ multiplot(plotlist=mfishdiv.site.plotlist,cols=2)
 Let's do a cluster analysis.  There are a number of ways we could go about this, but let's start with looking at the clustering of sites, combining species abundance data from all years for each site.  Later, we can cluster years within the timeseries of each site.  We'll use the benthic fish data to start.
 
 ```{r site clusters based on species density}
-#aggregate over years (i.e., aggregate density just by site and species)
+#aggregate over years (i.e., aggregate density just by site and species, based on the fish data)
 spe <- aggregate(list(dens=fishdens.dat$AdultDensity),by=list(station=fishdens.dat$Station,
                                                               species=fishdens.dat$SpeciesCode), FUN=mean) 
 # "long form" data to "short form" matrix, where rows are stations (1-7), columns are species, and values are densities
 spe <- acast(spe,station~species,value.var="dens")
 spe<-as.data.frame(spe)
 
-# Compute a chord distance matrix (i.e. differences between objects, or stations, based on )
+# Compute a chord distance matrix (i.e. differences between objects, or stations, based on relative species abundances)
 spe.norm <- decostand(spe,'nor')
 spe.dc <- dist(spe.norm)
 #look quickly at a visual representation of the distance matrix
@@ -416,6 +416,250 @@ abline(0,1)
 lines(lowess(spe.dc,spe.ch.UPGMA.coph),col='red')
 
 plot(spe.dc,spe.ch.ward.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
+     main=c('Ward clustering', paste('Cophenetic correlation',round(cor(spe.dc,spe.ch.ward.coph),3))))
+abline(0,1)
+lines(lowess(spe.dc,spe.ch.ward.coph),col='red')
+
+#Gower distance (another choice for determining best clustering)
+gow.dist.single <- sum((spe.dc-spe.ch.single.coph)^2)
+gow.dist.comp <- sum((spe.dc-spe.ch.comp.coph)^2)
+gow.dist.UPGMA <- sum((spe.dc-spe.ch.UPGMA.coph)^2)
+gow.dist.ward <- sum((spe.dc-spe.ch.ward.coph)^2)
+gow.dist.single
+gow.dist.comp
+gow.dist.UPGMA
+gow.dist.ward
+
+#Graphs of fusion level values (where to cut the dendrogram?)
+par(mfrow=c(2,2))
+#Plot the fusion level values of the single linkage clustering
+summary(spe.ch.single)
+plot(spe.ch.single$height,nrow(spe):2,type='S',main='Fusion levels - Chord - Single',ylab='k (number of clusters)',
+     xlab='h (node height)',col='grey')
+text(spe.ch.single$height,nrow(spe):2,nrow(spe):2, col='red',cex=0.8)
+
+#Plot the fusion level values of the complete linkage clustering
+summary(spe.ch.complete)
+plot(spe.ch.complete$height,nrow(spe):2,type='S',main='Fusion levels - Chord - Complete',ylab='k (number of clusters)',
+     xlab='h (node height)',col='grey')
+text(spe.ch.complete$height,nrow(spe):2,nrow(spe):2, col='red',cex=0.8)
+
+#Plot the fusion level values of the UPGMA clustering
+summary(spe.ch.UPGMA)
+plot(spe.ch.UPGMA$height,nrow(spe):2,type='S',main='Fusion levels - Chord - UPGMA',ylab='k (number of clusters)',
+     xlab='h (node height)',col='grey')
+text(spe.ch.UPGMA$height,nrow(spe):2,nrow(spe):2, col='red',cex=0.8)
+
+#Plot the fusion level values of the Ward clustering
+summary(spe.ch.ward)
+plot(spe.ch.ward$height,nrow(spe):2,type='S',main='Fusion levels - Chord - Ward',ylab='k (number of clusters)',
+     xlab='h (node height)',col='grey')
+text(spe.ch.ward$height,nrow(spe):2,nrow(spe):2, col='red',cex=0.8)
+
+##Cut the trees to obtain k groups and compare the group contents using contingency tables
+
+#choose a common number of groups
+k<-3 #Number of groups where at least a small jump is present in all four graphs of fusion levels
+#cut the dendrograms
+spebc.single.g <- cutree(spe.ch.single,k)
+spebc.complete.g <- cutree(spe.ch.complete,k)
+spebc.UPGMA.g <- cutree(spe.ch.UPGMA,k)
+spebc.ward.g <- cutree(spe.ch.ward,k)
+
+#compare classifications by constructing contingency tables
+#single vs. complete linkage
+table(spebc.single.g,spebc.complete.g)
+#single linkage vs. UPGMA
+table(spebc.single.g,spebc.UPGMA.g)
+#single linkage vs. Ward
+table(spebc.single.g,spebc.ward.g)
+#complete linkage vs. UPGMA
+table(spebc.complete.g,spebc.UPGMA.g)
+#complete linkage vs. Ward
+table(spebc.complete.g,spebc.ward.g)
+#UPGMA vs. Ward
+table(spebc.UPGMA.g,spebc.ward.g)
+
+# Optimal number of clusters according to silhouette widths(Rousseeuw quality index)
+# Plot average silhouette widths (using UPGMA clustering) for all partitions except for the trivial partition in a single group
+# First, create empty vector in which the asw values will be written
+asw <- numeric(nrow(spe))
+
+#Retrieve and write the asw values into the vector
+for (k in 2:(nrow(spe)-1)) {
+  sil <- silhouette(cutree(spe.ch.UPGMA,k=k),spe.dc)
+  asw[k] <- summary(sil)$avg.width
+}
+
+# Best (largest) silhouette width
+k.best <- which.max(asw)
+
+#the plot is produced by plot.silhouette
+par(mfrow=c(1,1))
+plot(1:nrow(spe),asw,type='h',main="Silhouette - optimal number of clusters, UPGMA",xlab='k (number of groups)',
+     ylab="Average silhouette width")
+axis(1,k.best,paste('optimum',k.best,sep="\n"),col='red',font=2,col.axis='red')
+points(k.best,max(asw),pch=16,col='red',cex=1.5)
+
+cat("", "Silhouette - Optimal number of clusters k =", k.best,'\n', "with an average silhouette width of", max(asw),"\n")
+
+## Optimal number of cluster according to Mantel statistic (Pearson)
+# Function to compute a binary distance matrix from groups
+grpdist <- function(X) {
+  require(cluster)
+  gr <- as.data.frame(as.factor(X))
+  distgr <- daisy(gr,"gower")
+  distgr
+}
+
+#Run based on UPGMA clustering
+ kt <- data.frame(k=1:nrow(spe), r=0)
+ 
+ for (i in 2:(nrow(spe)-1)) {
+   gr<-cutree(spe.ch.UPGMA,i)
+   distgr <- grpdist(gr)
+   mt <- cor(spe.dc,distgr,method="pearson")
+   kt[i,2]<-mt
+ }
+ 
+kt
+k.best <- which.max(kt$r)
+
+plot(kt$k,kt$r,type='h',main='Mantel - optimal number of clusters - UPGMA',xlab='k (number of groups)',
+    ylab="Pearson's correlation")
+axis(1,k.best,paste('optimum',k.best,sep="\n"),col='red',font=2,col.axis='red')
+points(k.best,max(kt$r),pch=16,col='red',cex=1.5)
+
+## we choose k=3 as our final number of groups, and UPGMA clustering as our best-option dendrogram
+# Silhouette plot of final partition
+k<-3
+# Silhouette plot
+cutg <- cutree(spe.ch.UPGMA,k=k)
+sil <- silhouette(cutg,spe.dc)
+silo<- sortSilhouette(sil)
+rownames(silo) <- row.names(spe)[attr(silo,'iOrd')]
+plot(silo,main='Silhouette plot - Chord - Ward',cex.names=0.8,col=cutg+1,nmax.lab=100)
+
+##Final dendrogram with the selected groups
+# Reorder dendrogram from hclust(). reorder.hclust() reorders objects so that their order in the dissimilarity matrix
+# is respected as much as possible. This does not affect the topology of the dendrogram
+spe.ch.ord <- reorder.hclust(spe.ch.UPGMA,spe.dc)
+
+#plot reordered dendrogram with group labels
+plot(spe.ch.ord,hang=-1,xlab="3 groups",sub='',ylab='Height',main='Chord - UPGMA (reordered)', labels=cutree(spe.ch.ord,k=k))
+rect.hclust(spe.ch.ord,k=k)
+
+#plot the final dendrogram with group colors (RGBCMY)
+hcoplot(spe.ch.UPGMA,spe.dc,k=3)
+
+
+##Other representations of this final result
+# Plot of the 4 UPGMA clusters on a map
+# function to convert "deg min" to decimal degrees
+dm2dd <- function(crd) {
+  mins <- strsplit(as.character(crd),split=' ')
+  mins <- as.numeric(unlist(mins))
+  out <- ifelse(mins[1]>0, mins[1]+mins[2]/60, mins[1]-mins[2]/60)
+  return(out)
+}
+stations.spa <- read.csv(file=paste(W_D,'/data/Table1_Monitoring_Stations.csv',sep=''))
+names(stations.spa)<-c('station','name','lat','long','depth','date')
+
+stations.spa$lat<-sapply(stations.spa$lat,dm2dd)
+stations.spa$long<-sapply(stations.spa$long,dm2dd)
+
+plot(stations.spa$long, stations.spa$lat,asp=1,type='n',main="Three UPGMA Groups",xlab='x coord',ylab='y coord')
+
+#add the 3 groups
+grw <- spebc.UPGMA.g
+k <- length(levels(factor(grw)))
+for(i in 1:k) {
+  points(stations.spa[grw==i,4], stations.spa[grw==i,3], pch=i+20,cex=3,col=i-1,bg=i+1)
+}
+text(stations.spa$long, stations.spa$lat, stations.spa$station, cex=0.8, col='white',font=2)
+legend('bottomright',paste('Group',1:k), pch=(1:k)+20,col=2:(k+1),pt.bg=2:(k+1),pt.cex=2,bty='n')
+
+##Heat map of the distance matrix ordered with the dendrogram
+dend <- as.dendrogram(spe.ch.ord)
+heatmap(as.matrix(spe.dc), Rowv=dend,symm=TRUE,margin=c(3,3))
+#Ordered community table
+# species are ordered by the weighted averages on site scores
+or <- vegemite(spe,spe.ch.ord,scale='log')
+#and a heatmap for the doubly ordered community table
+heatmap(t(spe[rev(or$species)]), Rowv=NA,Colv=dend,col=c('bisque',brewer.pal(3,'Greens')), scale='none',
+        margin=c(4,4),ylab='Species (weighted averages of sites)',xlab='Sites')
+
+## Three groups put Nav Fac by itself, as well as Sandy Cove, and group the West End, Dutch Harbor, and Daytona together.
+```
+
+The above cluster analysis was based on the adult fish found at each site.  What if we do the same for the benthic density dataset, which includes both benthic invertebrates and brown algae?
+```{r site clusters based on benthic density}
+#New spe dataset, using benthic density. Aggregate over years (i.e., aggregate density just by site and species, based on the benthic density data)
+spe <- aggregate(list(dens=benthdens.dat$Density),by=list(station=benthdens.dat$Station,
+                                                              species=benthdens.dat$SpeciesCode), FUN=mean) 
+# "long form" data to "short form" matrix, where rows are stations (1-7), columns are species, and values are densities
+spe <- acast(spe,station~species,value.var="dens")
+spe<-as.data.frame(spe)
+
+# Compute a chord distance matrix (i.e. differences between objects, or stations, based on relative species abundances )
+spe.norm <- decostand(spe,'nor')
+spe.dc <- dist(spe.norm)
+#look quickly at a visual representation of the distance matrix
+coldiss(spe.dc,byrank=FALSE,diag=TRUE)
+
+## Clustering options ###
+#Single Linkage Agglomerative Clustering
+spe.ch.single <- hclust(spe.dc, method='single')
+plot(spe.ch.single, main= 'Cluster - Single Linkage')
+
+#Complete Linkage Agglomerative Clustering
+spe.ch.complete <- hclust(spe.dc, method='complete')
+plot(spe.ch.complete, main= 'Cluster - Complete Linkage')
+
+#UPGMA (average distance) agglomerative clustering
+spe.ch.UPGMA <- hclust(spe.dc,method='average')
+plot(spe.ch.UPGMA, main= 'Cluster - UPGMA')
+
+#centroid clustering
+spe.ch.centroid <- hclust(spe.dc, method='centroid')
+plot(spe.ch.centroid,main= 'Cluster - Centroid')
+
+#Ward's minimum variance clustering
+spe.ch.ward <- hclust(spe.dc, method='ward')
+spe.ch.ward$height <- sqrt(spe.ch.ward$height)
+plot(spe.ch.ward,main= 'Cluster - Ward')
+
+## Cophenetic correlation for the above (trying to determine best clustering method) ##
+# single linkage clustering
+spe.ch.single.coph <- cophenetic(spe.ch.single)
+cor(spe.dc,spe.ch.single.coph)
+#complete linkage clustering
+spe.ch.comp.coph <- cophenetic(spe.ch.complete)
+cor(spe.dc,spe.ch.comp.coph)
+#average clustering
+spe.ch.UPGMA.coph <- cophenetic(spe.ch.UPGMA)
+cor(spe.dc,spe.ch.UPGMA.coph)
+#ward clustering
+spe.ch.ward.coph <- cophenetic(spe.ch.ward)
+cor(spe.dc,spe.ch.ward.coph)
+#Shepard-like diagrams to illustrate the relationship between a distance matrix and a set of cophenetic matrices
+par(mfrow=c(2,2))
+plot(spe.dc,spe.ch.single.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,1),ylim=c(0,1),
+     main=c('Single linkage', paste('Cophenetic correlation',round(cor(spe.dc,spe.ch.single.coph),3))))
+abline(0,1)
+lines(lowess(spe.dc,spe.ch.single.coph),col='red')
+
+plot(spe.dc,spe.ch.comp.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,1),ylim=c(0,1),
+     main=c('Complete linkage', paste('Cophenetic correlation',round(cor(spe.dc,spe.ch.comp.coph),3))))
+abline(0,1)
+lines(lowess(spe.dc,spe.ch.comp.coph),col='red')
+
+plot(spe.dc,spe.ch.UPGMA.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,1),ylim=c(0,1),
+     main=c('UPGMA', paste('Cophenetic correlation',round(cor(spe.dc,spe.ch.UPGMA.coph),3))))
+abline(0,1)
+lines(lowess(spe.dc,spe.ch.UPGMA.coph),col='red')
+
+plot(spe.dc,spe.ch.ward.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,1),ylim=c(0,1),
      main=c('Ward clustering', paste('Cophenetic correlation',round(cor(spe.dc,spe.ch.ward.coph),3))))
 abline(0,1)
 lines(lowess(spe.dc,spe.ch.ward.coph),col='red')
@@ -662,14 +906,28 @@ sit.names <- unique(sites$station)
 # Create datasets for each site, and cast to matrices of periodxspecies
 for(i in sit.names) {
   dat.t <- subset(sites,sites$station==i) #subset of 'master' (long form)
+  
   dat.t <- acast(dat.t,period~species,value.var="dens") # cast to matrix
   dat.t <- as.data.frame((dat.t))
   datname <- paste0("site",i)
   assign(datname,dat.t) # assign raw data to variable name "site'i'"
+  
   dat.norm <- decostand(dat.t,"normalize") # Euclidean norm (object vectors (periods) normalized to length 1)
   dat.norm <- dist(dat.norm) # Chord distance matrix
   distname <- paste0(datname,".dc") # Name for distance matrix
   assign(distname,dat.norm) # assign distance matrix to variable name "site'i'.dc" (for "distance-chord")
+  
+  #split seasons
+  dat.t.spring <- sites[sites$period%%2==0 & sites$station==i,] #even periods (spring)
+  dat.t.spring <- acast(dat.t.spring,period~species,value.var="dens",fun.aggregate = mean) # cast to matrix
+  dat.t.spring <- as.data.frame(dat.t.spring)
+  dat.t.fall <- sites[sites$period%%2==1 & sites$station==i,] #odd periods (fall)
+  dat.t.fall <- acast(dat.t.fall,period~species,value.var="dens",fun.aggregate = mean) # cast to matrix
+  dat.t.fall <- as.data.frame(dat.t.fall)
+  datname.spring <-paste0(datname,".spring")
+  datname.fall <-paste0(datname,".fall")
+  assign(datname.spring,dat.t.spring) # assign raw spring data to variable name
+  assign(datname.fall,dat.t.fall) # assign raw fall data to variable name
 }
 
 # Let's start with Site 7, and compute a clustering result (using UPGMA) and an ordination (correspondence)
@@ -772,11 +1030,138 @@ grp.lev <- levels(factor(site7.UPGMA.groups))
 
 # Combination with CA
 sit.sc <- scores(site7.ca,display="wa",scaling=1)
-p <-plot(site7.ca, display="wa",scaling=1, type="n", main="CA + clusters UPGMA/Chord")
+spe.ca.sc <- scores(site7.ca,display="sp",scaling=1)
+site7.ca.p1 <-plot(site7.ca, display=c("wa","sp"),scaling=1, type="n", main="CA + clusters UPGMA/Chord")
 for(i in 1:length(grp.lev)) points(sit.sc[site7.UPGMA.groups==i,],pch=(14+i), cex=2, col=i+1)
-text(sit.sc,row.names(site7),pos=4,cex=0.7)
+text(sit.sc,row.names(site7),pos=4,cex=0.7,col="blue")
 
-#Add the dendrogram
-ordicluster(p, site7.UPGMA,col="dark grey")
-legend(locator(1), paste("Group",c(1:length(grp.lev))),pch=14+c(1:length(grp.lev)), col=1+c(1:length(grp.lev)), pt.cex=2)
+# Adding species names for easier interpretation
+# Scaling 1
+site7.spe <- data.frame(spenum=as.numeric(names(site7)))
+site7.spe<-merge(site7.spe,spp.key[spp.key$DataSet=="Benthic density",],by.x="spenum",by.y="SpeciesCode",all=F)
+text(spe.ca.sc,as.character(site7.spe$SpeciesName),pos=4,cex=0.7)
+
+# Scaling 2
+sit.sc <- scores(site7.ca,display="wa",scaling=2)
+spe.ca.sc <- scores(site7.ca,display="sp",scaling=2)
+site7.ca.p2 <-plot(site7.ca, display=c("wa","sp"),scaling=2, type="n", main="CA + clusters UPGMA/Chord")
+for(i in 1:length(grp.lev)) points(sit.sc[site7.UPGMA.groups==i,],pch=(14+i), cex=2, col=i+1)
+text(sit.sc,row.names(site7),pos=4,cex=0.7,col="blue")
+
+text(spe.ca.sc,as.character(site7.spe$SpeciesName),pos=4,cex=0.7)
+
+```
+
+CA for Sites 2 and 3, West End San Nic
+
+```{r clustering and ordination of years by site for sites 2 and 3}
+# **********************************
+# Compute CA
+site2.ca <- cca(site2)
+site2.ca
+summary(site2.ca) # scaling 2 means chi-sq distance preserved between species
+summary(site2.ca, scaling=1) # scaling 1 means chi-sq distance preserved between objects (periods)
+
+# Plot eigenvalues and % of variance for each CA axis
+(site2.ev<-site2.ca$CA$eig)
+evplot(site7.ev)
+
+## CA biplots
+# ********************
+par(mfrow=c(1,2))
+
+#scaling 1: periods are centroids of species
+plot(site2.ca,scaling=1,main="CA of benthic densities - biplot scaling 1")
+#scaling 2: species are centroids of periods
+plot(site2.ca,scaling=2,main="CA of benthic densities - biplot scaling 2")
+
+sit.sc <- scores(site2.ca,display="wa",scaling=1)
+spe.ca.sc <- scores(site2.ca,display="sp",scaling=1)
+par(mfrow=c(1,1))
+site2.ca.p1 <-plot(site2.ca, display=c("wa","sp"),scaling=1, type="n", main="CA, Site 2 Scaling 1")
+text(sit.sc,row.names(site2),pos=4,cex=0.7,col="blue")
+
+# Adding species names for easier interpretation
+# Scaling 1
+site2.spe <- data.frame(spenum=as.numeric(names(site2)))
+site2.spe<-merge(site2.spe,spp.key[spp.key$DataSet=="Benthic density",],by.x="spenum",by.y="SpeciesCode",all=F)
+text(spe.ca.sc,as.character(site2.spe$SpeciesName),pos=4,cex=0.7)
+
+# Scaling 2
+sit.sc <- scores(site2.ca,display="wa",scaling=2)
+spe.ca.sc <- scores(site2.ca,display="sp",scaling=2)
+site2.ca.p2 <-plot(site2.ca, display=c("wa","sp"),scaling=2, type="n", main="CA, Site 2 Scaling 2")
+for(i in 1:length(grp.lev)) points(sit.sc[site2.UPGMA.groups==i,],pch=(14+i), cex=2, col=i+1)
+text(sit.sc,row.names(site2),pos=4,cex=0.7,col="blue")
+
+text(spe.ca.sc,as.character(site2.spe$SpeciesName),pos=4,cex=0.7)
+
+### Site 3
+# Compute CA
+site3.ca <- cca(site3)
+site3.ca
+summary(site3.ca) # scaling 2 means chi-sq distance preserved between species
+summary(site3.ca, scaling=1) # scaling 1 means chi-sq distance preserved between objects (periods)
+
+# Plot eigenvalues and % of variance for each CA axis
+(site3.ev<-site3.ca$CA$eig)
+evplot(site7.ev)
+
+## CA biplots
+# ********************
+par(mfrow=c(1,2))
+
+#scaling 1: periods are centroids of species
+plot(site3.ca,scaling=1,main="CA of benthic densities - biplot scaling 1")
+#scaling 2: species are centroids of periods
+plot(site3.ca,scaling=2,main="CA of benthic densities - biplot scaling 2")
+
+sit.sc <- scores(site3.ca,display="wa",scaling=1)
+spe.ca.sc <- scores(site3.ca,display="sp",scaling=1)
+par(mfrow=c(1,1))
+site3.ca.p1 <-plot(site3.ca, display=c("wa","sp"),scaling=1, type="n", main="CA, Site 3 Scaling 1")
+text(sit.sc,row.names(site3),pos=4,cex=0.7,col="blue")
+
+# Adding species names for easier interpretation
+# Scaling 1
+site3.spe <- data.frame(spenum=as.numeric(names(site3)))
+site3.spe<-merge(site3.spe,spp.key[spp.key$DataSet=="Benthic density",],by.x="spenum",by.y="SpeciesCode",all=F)
+text(spe.ca.sc,as.character(site3.spe$SpeciesName),pos=4,cex=0.7)
+
+# Scaling 2
+sit.sc <- scores(site3.ca,display="wa",scaling=2)
+spe.ca.sc <- scores(site3.ca,display="sp",scaling=2)
+site3.ca.p2 <-plot(site3.ca, display=c("wa","sp"),scaling=2, type="n", main="CA, Site 3 Scaling 2")
+text(sit.sc,row.names(site3),pos=4,cex=0.7,col="blue")
+
+text(spe.ca.sc,as.character(site3.spe$SpeciesName),pos=4,cex=0.7)
+
+```
+
+General function for graphing a nice CA result for any of the sites (ordinating periods within a given site)
+
+```{r general CA result graph function}
+CA.ggplot <- function(site.dat, scaling=1,choices=c(1,2),plottitle=NULL) { #inputs are a site's dataset, and scaling 1 (default) or 2
+  # Compute CA
+  site.ca <- cca(site.dat)
+  
+  # Extract scores for plotting
+  sit.sc <- as.data.frame(scores(site.ca,choices=choices,display="wa",scaling=scaling))
+  sit.sc["period"]<-row.names(sit.sc)
+  spe.ca.sc <- as.data.frame(scores(site.ca,choices=choices,display="sp",scaling=scaling))
+  spe.ca.sc["species"]<-as.numeric(row.names(spe.ca.sc))
+  
+  # Adding species names for easier interpretation
+  spe.ca.sc["spename"]<-left_join(spe.ca.sc,spp.key[spp.key$DataSet=="Benthic density",],by=c("species"="SpeciesCode"))$SpeciesName
+  
+  axes.names <- names(sit.sc)
+  
+  # The plot
+  site.ca.p <-ggplot(spe.ca.sc) +geom_text(data=spe.ca.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(spe.ca.sc[4]))),family="serif",col="red")+geom_text(data=sit.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(sit.sc[3]))),col="blue") + geom_hline(yintercept=0,linetype=2)+ geom_vline(xintercept=0,linetype=2) +ggtitle(plottitle)
+  
+  return(site.ca.p)
+}
+
+# Remove seasonal variation by looking at odd periods (fall) and even periods (spring) separately
+
 ```
