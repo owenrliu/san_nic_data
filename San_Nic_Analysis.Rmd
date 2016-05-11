@@ -34,7 +34,8 @@ ott$Date<-as.Date(ott$Date,format="%m/%d/%Y")
 plot(ott$Date,ott$West, main="Independent Sea Otters Observed at SNI",xlab="Year",ylab="Number of Otters",type="l",col="darkgreen",
      ylim=c(0,50),lwd=2)
 lines(ott$Date,rowSums(cbind(ott$North,ott$South)),col="red",lwd=2)
-legend("topleft",col=c("darkgreen","red"),legend=c("West","North and South"),lty=1)
+lines(ott$Date,rowSums(cbind(ott$West,ott$North,ott$South)),lty="dotted",col="blue",lwd=2)
+legend("topleft",col=c("darkgreen","red","blue"),legend=c("West","North and South","Total"),lty=1)
 
 #fix dates in the datasets to be more readable by R
 betterDates <-function(dat) {
@@ -223,9 +224,10 @@ spp.abun.benthdens<-arrange(aggregate(list(meandens=benthdens.dat$Density),by=li
 spp.abun.benthdens<-merge(spp.abun.benthdens,spp.key[spp.key$DataSet=="Benthic density",-3],by.x="species",by.y="SpeciesCode")
 
 #function for a given species utilizing the benthic density dataset
-benthdens.spp.viz <- function (spp) {
+# can specify subset of stations you're interested in (default all stations)
+benthdens.spp.viz <- function (spp,sites=1:7) {
 
-  spp.dat <- subset(benthdens.dat,benthdens.dat$SpeciesCode==spp)
+  spp.dat <- subset(benthdens.dat,benthdens.dat$SpeciesCode==spp & benthdens.dat$Station %in% sites)
   #subset for the given species
   timeseries <- aggregate(list(Density=spp.dat$Density), by=list(Date=spp.dat$Date,Site=spp.dat$Station),FUN=mean)
   tot <- aggregate(list(Density=spp.dat$Density), by=list(Period=spp.dat$Period),FUN=mean)
@@ -848,14 +850,36 @@ purples <- subset(benthdens.dat, SpeciesCode==30)
 # aggregate by station
 purples<-aggregate(list(dens=purples$Density),by=list(station=purples$Station,period=purples$Period),FUN=mean)
 
+# Macrocystis
 mp<-subset(benthdens.dat,SpeciesCode==589)
 mp <- aggregate(list(dens=mp$Density),by=list(station=mp$Station, period=mp$Period),FUN=mean)
 
-urch.mp <- left_join(reds,purples,by=c('station','period'))
-urch.mp <- left_join(urch.mp,mp,by=c('station','period'))
-names(urch.mp)[3:5] <- c("red","purple","mp")
+# Laminaria
+lam <-subset(benthdens.dat,SpeciesCode==556)
+lam <- aggregate(list(dens=lam$Density),by=list(station=lam$Station, period=lam$Period),FUN=mean)
 
-urch.mp.melt <- melt(urch.mp,id.vars=names(urch.mp)[1:2], measure.vars=names(urch.mp)[3:5])
+# Cystoseira
+cysto <-subset(benthdens.dat,SpeciesCode==553)
+cysto <- aggregate(list(dens=cysto$Density),by=list(station=cysto$Station, period=cysto$Period),FUN=mean)
+
+# Eisenia
+eis <-subset(benthdens.dat,SpeciesCode==574)
+eis <- aggregate(list(dens=eis$Density),by=list(station=eis$Station, period=eis$Period),FUN=mean)
+
+
+urch.mp <- left_join(reds,purples,by=c('station','period'))
+names(urch.mp)[3]<-"red"
+names(urch.mp)[4]<- "purple"
+urch.mp <- left_join(urch.mp,mp,by=c('station','period'))
+names(urch.mp)[5]<-"mp"
+urch.mp <- left_join(urch.mp,lam,by=c('station','period'))
+names(urch.mp)[6]<-"lam"
+urch.mp <- left_join(urch.mp,cysto,by=c('station','period'))
+names(urch.mp)[7]<-"cysto"
+urch.mp <- left_join(urch.mp,eis,by=c('station','period'))
+names(urch.mp)[8]<-"eis"
+
+urch.mp.melt <- melt(urch.mp,id.vars=names(urch.mp)[1:2], measure.vars=names(urch.mp)[3:8])
 
 # Red urchins vs. M. pyrifera at different sites
 ggplot(urch.mp, aes(x=mp, y=red)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of M. pyrifera vs. S. franciscanus") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")
@@ -872,10 +896,16 @@ urch.mp.3 <- subset(urch.mp,urch.mp$station==3)
 ggplot(data=urch.mp.7, aes(x=mp, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(mp, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm"))) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=40) +ggtitle("Density of M. pyrifera vs. S. franciscanus, Sandy Cove") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.02,nudge_y=0.5,size=3)
 
 #Station 2
-ggplot(data=urch.mp.2, aes(x=mp, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(mp, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm"))) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=40) +ggtitle("Density of M. pyrifera vs. S. franciscanus, West End 'Urchin'") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x=0.01,nudge_y=0.1,size=3)
+ggplot(data=urch.mp.2, aes(x=mp, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(mp, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm")),col="darkgreen") +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=40) +ggtitle("Density of M. pyrifera vs. S. franciscanus, West End 'Urchin'") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x=0.05,nudge_y=0.2,size=3)
 
 #Station 3
-ggplot(data=urch.mp.3, aes(x=mp, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(mp, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm"))) +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of M. pyrifera vs. S. franciscanus, West End 'Kelp'") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.02,nudge_y=0.1,size=3)
+ggplot(data=urch.mp.3, aes(x=mp, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(mp, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm")),col="darkgreen") +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of M. pyrifera vs. S. franciscanus, West End 'Kelp'") + xlab("M. pyrifera density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.05,nudge_y=0.2,size=3)
+
+# Station 3, Cystoseira
+ggplot(data=urch.mp.3, aes(x=cysto, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(cysto, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm")),col="darkgreen") +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of Cystoseira vs. S. franciscanus, West End 'Kelp'") + xlab("Cystoseira density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.05,nudge_y=0.2,size=3)
+
+# Station 3, Cystoseira vs. Macro
+ggplot(data=urch.mp.3, aes(x=cysto, y=mp)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(cysto, n=-1), NA), yend=c(tail(mp, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm")),col="darkgreen") +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of Cystoseira vs. M. pyrifera, West End 'Kelp'") + xlab("Cystoseira density (ind. >1m/m2)") + ylab("M. pyrifera density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.05,nudge_y=0.2,size=3)
 
 
 #Purple urchins vs. M. pyrifera at different sites
@@ -883,6 +913,15 @@ ggplot(urch.mp, aes(x=mp, y=purple)) +geom_point(aes(col=period)) +scale_color_g
 
 #Purple urchins vs. Red urchins? at different sites
 ggplot(urch.mp, aes(x=red, y=purple)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of S.franciscanus vs. S. purpuratus") + xlab("S. franciscanus density (ind./m2)") + ylab("S. purpuratus density (ind./m2)")
+
+# Red urchins vs. laminaria
+ggplot(urch.mp, aes(x=lam, y=red)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of Laminaria spp. vs. S. franciscanus") + xlab("Laminaria spp. density (ind./m2)") + ylab("S. franciscanus density (ind./m2)")
+
+# Red urchins vs. cystoseira
+ggplot(urch.mp, aes(x=cysto, y=red)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of Cystoseira osmundacea vs. S. franciscanus") + xlab("Cystoseira osmundacea density (ind./m2)") + ylab("S. franciscanus density (ind./m2)")
+
+# Red urchins vs. eisenia
+ggplot(urch.mp, aes(x=eis, y=red)) +geom_point(aes(col=period)) +scale_color_gradient2(low="red",high="blue",mid="white",midpoint=30)+facet_wrap(~station) + ggtitle("Density of Eisenia arborea vs. S. franciscanus") + xlab("Eisenia density (ind./m2)") + ylab("S. franciscanus density (ind./m2)")
 
 
 # Map of stations.
@@ -898,7 +937,7 @@ ggplot() + geom_polygon(data=san_nic_base,aes(x=long,y=lat), fill='green3',col='
 Ordination of years within sites.  Before, we looked at sites across all years.  Now, let's look within individual sites, where the "objects" (rows, samples) are years, and the columns (variables) are the species.  This time, we'll use the benthic density data
 
 ```{r clustering and ordination of years by site}
-#aggregate sites by year
+#aggregate sites by period
 sites <- aggregate(list(dens=benthdens.dat$Density),by=list(station=benthdens.dat$Station,period=benthdens.dat$Period,
                                                               species=benthdens.dat$SpeciesCode), FUN=mean)
 sit.names <- unique(sites$station)
@@ -1157,11 +1196,52 @@ CA.ggplot <- function(site.dat, scaling=1,choices=c(1,2),plottitle=NULL) { #inpu
   axes.names <- names(sit.sc)
   
   # The plot
-  site.ca.p <-ggplot(spe.ca.sc) +geom_text(data=spe.ca.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(spe.ca.sc[4]))),family="serif",col="red")+geom_text(data=sit.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(sit.sc[3]))),col="blue") + geom_hline(yintercept=0,linetype=2)+ geom_vline(xintercept=0,linetype=2) +ggtitle(plottitle)
+  cols <- c("Periods"="blue","Species"="red")
+  site.ca.p <-ggplot(spe.ca.sc) +
+    geom_text(data=spe.ca.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(spe.ca.sc[4]))),family="serif",col="red",size=3)+
+    geom_text(data=sit.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(sit.sc[3]))),col="blue") +
+    geom_hline(yintercept=0,linetype=2)+ geom_vline(xintercept=0,linetype=2) +
+    ggtitle(plottitle)
   
   return(site.ca.p)
 }
 
 # Remove seasonal variation by looking at odd periods (fall) and even periods (spring) separately
+CA.ggplot(site2) + ggtitle("Correspondence Analysis, West End (Site 2)")
 
 ```
+
+Logistic regression of phase state by otter density
+
+```{r logistic regression}
+# First, coerce data into "kelp forest" or "urchin barren" (binary)
+# pooling data from sites 2,3, and 7
+ott.state.bin <- subset(sites,sites$station %in% c(2,3,7)) #subset of 'master' (long form)
+ott.state.bin <- dcast(ott.state.bin,period~species,value.var="dens",fun.aggregate = mean) # cast to data frame
+ott.state.bin <- ott.state.bin[,c("period","29","589")]
+
+# Have to manually match otter counts to periods, and assume population statis between periods when otters weren't counted
+ott.counts <- c(rep(0,27),rep(10,3),9,rep(13,4),18,rep(20,3),24,22,20,20,30,29,29,29,29,31,31,34,30,34,42)
+ott.state.bin$ott.count <- ott.counts
+ott.state.bin$red.binary <- NA
+
+# Criteria (somewhat arbitrary...)
+# Barren = density of red urchins > 2/m2 AND macrocystis < 0.5/m2
+# Kelp Forest = density of red urchins < 2/m2 AND macrocystis > 0.5/m2
+ott.state.bin$red.binary <- apply(ott.state.bin,MARGIN=1,function(x){
+  out<-NA
+  if(x["29"]>2 & x["589"]<0.5) out = 0
+  if(x["29"]<2 & x["589"]>0.5) out = 1
+  return(out)
+  })
+
+# Plot with logistic fit
+ggplot(ott.state.bin,aes(x=ott.count,y=red.binary)) +
+  geom_point() +
+  ggtitle("Ecosystem State as a Function of Otter Abundance") +
+  xlab("Otter Abundance, # ind.") +
+  ylab("Ecosystem State") +
+  scale_y_continuous(breaks=c(0,1),labels=c("Barren","Kelp Forest")) +
+  geom_smooth(method="glm",method.args = list(family = "binomial"),se=F) +
+  geom_vline(xintercept=19,col="red",linetype=2) +
+  geom_text(aes(22,0.1,label = "19 Otters"),col="darkred")
