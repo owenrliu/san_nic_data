@@ -79,9 +79,9 @@ evplot <- function(ev)
 
 
 #### 6.3 Redundancy Analysis ####
-# Method that comines regession and principal component analysis (PCA)
+# Method that combines regression and principal component analysis (PCA)
 # Conceptually, it is a multivariate multiple linear regression followed by a PCA of the table of fitted values
-# Steps (see text); on a matrix Y of centred responses data and a matrix X of centred (standardized) explantory vars:
+# Steps (see text); on a matrix Y of centred responses data and a matrix X of centred (standardized) explanatory vars:
   # Regress each y variable on explanatory table X and compute the fitted (yhat) and residual vectors.
   # Assemble all fitted vectors yhat in a matrix Yhat of fitted values
   # Compute a PCA of Yhat. produces a vector of canonical eigenvalues and matrix U of canonical eigenvectors
@@ -379,7 +379,7 @@ arrows(0,0,spe.manova.sc[,1],spe.manova.sc[,2],length=0,col="red")
 #### Canonical Correspondence Analysis ####
 # The canonical counterpart of CA
 # shares many characteristics with RDA
-# weighted form of RDA applkied to the same matrix Q of contributions to the chi-sq statistic as used in CA
+# weighted form of RDA applied to the same matrix Q of contributions to the chi-sq statistic as used in CA
 # shortcomings and warnings, text p. 198-99
 
 ### 6.4.2 CCA of the Doubs Data ###
@@ -474,10 +474,10 @@ ordirgl(spe.cca.pars,display="species",type="t",col=gs+1)
 
 #### 6.5 Linear Discriminant Analysis ####
 
-# LDA is different from RDA and CCA in that the response variable is agrouping of the sites; maybe from a clustering,
+# LDA is different from RDA and CCA in that the response variable is a grouping of the sites; maybe from a clustering,
 # maybe representing an ecological hypothesis.  LDA tries to determine to what extent an independent set of
 # quantitative variables can explain this grouping.  Site typology MUST have been obtained independently from the
-# explanatory variables used in teh LDA; otehrwise, the procedure is circular.
+# explanatory variables used in the LDA; otehrwise, the procedure is circular.
 
 # LDA computes discriminant functions from standardized descriptors.  These coefficients quantify the relative
 # contributions of the (standardized) explanatory variables to the discrimination of objects.  On the other hand,

@@ -35,6 +35,9 @@ plot(ott$Date,ott$West, main="Independent Sea Otters Observed at SNI",xlab="Year
      ylim=c(0,50),lwd=2)
 lines(ott$Date,rowSums(cbind(ott$North,ott$South)),col="red",lwd=2)
 lines(ott$Date,rowSums(cbind(ott$West,ott$North,ott$South)),lty="dotted",col="blue",lwd=2)
+abline(h=19,v=as.Date("2000-05-02"),lty="dotted",col="darkred",lwd=1.5)
+text(as.Date("2000-05-02"),10,"Period 40",pos=4,col="darkred")
+text(as.Date("1995-01-01"),21,"19 Otters",pos=4,col="darkred")
 legend("topleft",col=c("darkgreen","red","blue"),legend=c("West","North and South","Total"),lty=1)
 
 #fix dates in the datasets to be more readable by R
@@ -181,7 +184,7 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
   require(gclus)
   gr <- cutree(tree, k=k)
   tor <- reorder.hclust(tree, diss)
-  plot(tor, hang=-1, xlab=paste(length(gr),"sites"), sub=paste(k,"clusters"), 
+  plot(tor, hang=-1, xlab=paste(length(gr),"objects"), sub=paste(k,"clusters"), 
        main=title)
   so <- gr[tor$order]
   gro <- numeric(k)
@@ -191,7 +194,7 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
     if (i<k) so <- so[so!=gro[i]]
   }
   rect.hclust(tor, k=k, border=gro+1, cluster=gr)
-  legend("topright", paste("Cluster",1:k), pch=22, col=2:(k+1), bty="n")
+  legend("topleft", paste("Cluster",1:k), pch=22, col=2:(k+1), bty="n")
 }
 lunique <- function(x) length(unique(x))
 
@@ -866,6 +869,10 @@ cysto <- aggregate(list(dens=cysto$Density),by=list(station=cysto$Station, perio
 eis <-subset(benthdens.dat,SpeciesCode==574)
 eis <- aggregate(list(dens=eis$Density),by=list(station=eis$Station, period=eis$Period),FUN=mean)
 
+# Pterogophora
+ptero <-subset(benthdens.dat,SpeciesCode==575)
+ptero <- aggregate(list(dens=ptero$Density),by=list(station=ptero$Station, period=ptero$Period),FUN=mean)
+
 
 urch.mp <- left_join(reds,purples,by=c('station','period'))
 names(urch.mp)[3]<-"red"
@@ -878,6 +885,8 @@ urch.mp <- left_join(urch.mp,cysto,by=c('station','period'))
 names(urch.mp)[7]<-"cysto"
 urch.mp <- left_join(urch.mp,eis,by=c('station','period'))
 names(urch.mp)[8]<-"eis"
+urch.mp <- left_join(urch.mp,ptero,by=c('station','period'))
+names(urch.mp)[9]<-"ptero"
 
 urch.mp.melt <- melt(urch.mp,id.vars=names(urch.mp)[1:2], measure.vars=names(urch.mp)[3:8])
 
@@ -903,6 +912,15 @@ ggplot(data=urch.mp.3, aes(x=mp, y=red)) +geom_point(aes(col=period),size=4)+geo
 
 # Station 3, Cystoseira
 ggplot(data=urch.mp.3, aes(x=cysto, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(cysto, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm")),col="darkgreen") +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of Cystoseira vs. S. franciscanus, West End 'Kelp'") + xlab("Cystoseira density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.05,nudge_y=0.2,size=3)
+
+# Station 3, Eisenia
+ggplot(data=urch.mp.3, aes(x=eis, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(eis, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm")),col="darkgreen") +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of Eisenia vs. S. franciscanus, West End 'Kelp'") + xlab("Eisenia density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.05,nudge_y=0.2,size=3)
+
+# Station 3, laminaria
+ggplot(data=urch.mp.3, aes(x=lam, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(lam, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm")),col="darkgreen") +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of Laminaria vs. S. franciscanus, West End 'Kelp'") + xlab("Laminaria density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.05,nudge_y=0.2,size=3)
+
+# Station 3, pterogophora
+ggplot(data=urch.mp.3, aes(x=ptero, y=red)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(ptero, n=-1), NA), yend=c(tail(red, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm")),col="darkgreen") +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of Pterogophora vs. S. franciscanus, West End 'Kelp'") + xlab("Pterogophora density (ind. >1m/m2)") + ylab("S. franciscanus density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.05,nudge_y=0.2,size=3)
 
 # Station 3, Cystoseira vs. Macro
 ggplot(data=urch.mp.3, aes(x=cysto, y=mp)) +geom_point(aes(col=period),size=4)+geom_segment(aes(xend=c(tail(cysto, n=-1), NA), yend=c(tail(mp, n=-1), NA)),arrow=arrow(angle=20,type="closed",length=unit(0.2,"cm")),col="darkgreen") +scale_color_gradient2(low="red",high="blue",mid="lightyellow",midpoint=30) +ggtitle("Density of Cystoseira vs. M. pyrifera, West End 'Kelp'") + xlab("Cystoseira density (ind. >1m/m2)") + ylab("M. pyrifera density (ind./m2)")+geom_text(aes(label=period),nudge_x = 0.05,nudge_y=0.2,size=3)
@@ -1032,7 +1050,7 @@ points(k.best,max(kt$r),pch=16,col='red',cex=1.5)
 
 ## we choose k=4 as our final number of groups, and UPGMA clustering as our best-option dendrogram
 # Silhouette plot of final partition
-k<-2
+k<-4
 # Silhouette plot
 cutg <- cutree(site7.UPGMA,k=k)
 sil <- silhouette(cutg,site7.dc)
@@ -1091,6 +1109,100 @@ text(spe.ca.sc,as.character(site7.spe$SpeciesName),pos=4,cex=0.7)
 
 ```
 
+
+Clustering for all "otter occupied areas", sites 2,3,7
+
+```{r clustering by period, all otter sites}
+ott.sites <- subset(sites,sites$station %in% c(2,3))
+ott.sites <- acast(ott.sites,period~species,value.var="dens",fun.aggregate = mean) # cast to matrix, mean across 3 sites
+ott.sites <- as.data.frame((ott.sites))
+
+ott.sites.norm <- decostand(ott.sites,"normalize") # Euclidean norm (object vectors (periods) normalized to length 1)
+ott.dc <- dist(ott.sites.norm) # Chord distance matrix
+  
+ott.sites.clust <- hclust(ott.dc,method="average") # Cluster analysis on chord distance matrix, UPGMA (average distance clustering)
+plot(ott.sites.clust, main="Clusters - UPGMA")
+
+#cophenetic comparison to chord distance and shepard diagram
+ott.sites.clust.coph <- cophenetic(ott.sites.clust)
+cor(ott.dc,ott.sites.clust.coph)
+
+plot(ott.dc,ott.sites.clust.coph,xlab='Chord Distance',ylab='Cophenetic Distance',asp=1,xlim=c(0,sqrt(2)),ylim=c(0,sqrt(2)),
+     main=c('Single linkage', paste('Cophenetic correlation',round(cor(ott.dc,ott.sites.clust.coph),3))))
+abline(0,1)
+lines(lowess(ott.dc,ott.sites.clust.coph),col='red')
+
+#Plot the fusion level values of the UPGMA clustering
+plot(ott.sites.clust$height,nrow(ott.sites):2,type='S',main='Fusion levels - Chord - UPGMA',ylab='k (number of clusters)',
+     xlab='h (node height)',col='grey')
+text(ott.sites.clust$height,nrow(ott.sites):2,nrow(ott.sites):2, col='red',cex=0.8)
+
+## How many clusters (groups?)
+# Optimal number of clusters according to silhouette widths(Rousseeuw quality index)
+# Plot average silhouette widths (using UPGMA clustering) for all partitions except for the trivial partition in a single group
+# First, create empty vector in which the asw values will be written
+asw <- numeric(nrow(ott.sites))
+
+#Retrieve and write the asw values into the vector
+for (k in 2:(nrow(ott.sites)-1)) {
+  sil <- silhouette(cutree(ott.sites.clust,k=k),ott.dc)
+  asw[k] <- summary(sil)$avg.width
+}
+
+# Best (largest) silhouette width
+k.best <- which.max(asw)
+
+#the plot is produced by plot.silhouette
+par(mfrow=c(1,1))
+plot(1:nrow(ott.sites),asw,type='h',main="Silhouette - optimal number of clusters, UPGMA",xlab='k (number of groups)',
+     ylab="Average silhouette width")
+axis(1,k.best,paste('optimum',k.best,sep="\n"),col='red',font=2,col.axis='red')
+points(k.best,max(asw),pch=16,col='red',cex=1.5)
+
+cat("", "Silhouette - Optimal number of clusters k =", k.best,'\n', "with an average silhouette width of", max(asw),"\n")
+
+#Mantel statistic on UPGMA clustering
+ kt <- data.frame(k=1:nrow(ott.sites), r=0)
+ 
+ for (i in 2:(nrow(ott.sites)-1)) {
+   gr<-cutree(ott.sites.clust,i)
+   distgr <- grpdist(gr)
+   mt <- cor(ott.dc,distgr,method="pearson")
+   kt[i,2]<-mt
+ }
+ 
+kt
+k.best <- which.max(kt$r)
+
+plot(kt$k,kt$r,type='h',main='Mantel - optimal number of clusters - UPGMA',xlab='k (number of groups)',
+    ylab="Pearson's correlation")
+axis(1,k.best,paste('optimum',k.best,sep="\n"),col='red',font=2,col.axis='red')
+points(k.best,max(kt$r),pch=16,col='red',cex=1.5)
+
+## we choose k=4 as our final number of groups, and UPGMA clustering as our best-option dendrogram
+# Silhouette plot of final partition
+k<-4
+# Silhouette plot
+cutg <- cutree(ott.sites.clust,k=k)
+sil <- silhouette(cutg,ott.dc)
+silo<- sortSilhouette(sil)
+rownames(silo) <- row.names(ott.sites)[attr(silo,'iOrd')]
+plot(silo,main='Silhouette plot - Chord - UPGMA',cex.names=0.8,col=silo+1,nmax.lab=100)
+
+##Final dendrogram with the selected groups
+# Reorder dendrogram from hclust(). reorder.hclust() reorders objects so that their order in the dissimilarity matrix
+# is respected as much as possible. This does not affect the topology of the dendrogram
+ott.dc.ord <- reorder.hclust(ott.sites.clust,ott.dc)
+
+#plot reordered dendrogram with group labels
+plot(ott.dc.ord,hang=-1,xlab="4 groups",sub='',ylab='Height',main='Chord - UPGMA (reordered)', labels=cutree(ott.dc.ord,k=k))
+rect.hclust(ott.dc.ord,k=k)
+
+#plot the final dendrogram with group colors (RGBCMY)
+hcoplot(ott.sites.clust,ott.dc,k=4, title="Cluster Dendrogram, Otter-Occupied Sites")
+
+```
+
 CA for Sites 2 and 3, West End San Nic
 
 ```{r clustering and ordination of years by site for sites 2 and 3}
@@ -1103,7 +1215,7 @@ summary(site2.ca, scaling=1) # scaling 1 means chi-sq distance preserved between
 
 # Plot eigenvalues and % of variance for each CA axis
 (site2.ev<-site2.ca$CA$eig)
-evplot(site7.ev)
+evplot(ott.sites.ev)
 
 ## CA biplots
 # ********************
@@ -1180,9 +1292,9 @@ text(spe.ca.sc,as.character(site3.spe$SpeciesName),pos=4,cex=0.7)
 General function for graphing a nice CA result for any of the sites (ordinating periods within a given site)
 
 ```{r general CA result graph function}
-CA.ggplot <- function(site.dat, scaling=1,choices=c(1,2),plottitle=NULL) { #inputs are a site's dataset, and scaling 1 (default) or 2
+CA.ggplot <- function(site.dat, scaling=1,choices=c(1,2)) { #inputs are a site's dataset, and scaling 1 (default) or 2
   # Compute CA
-  site.ca <- cca(site.dat)
+  site.ca <- vegan::cca(site.dat)
   
   # Extract scores for plotting
   sit.sc <- as.data.frame(scores(site.ca,choices=choices,display="wa",scaling=scaling))
@@ -1196,17 +1308,18 @@ CA.ggplot <- function(site.dat, scaling=1,choices=c(1,2),plottitle=NULL) { #inpu
   axes.names <- names(sit.sc)
   
   # The plot
-  cols <- c("Periods"="blue","Species"="red")
   site.ca.p <-ggplot(spe.ca.sc) +
     geom_text(data=spe.ca.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(spe.ca.sc[4]))),family="serif",col="red",size=3)+
     geom_text(data=sit.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(sit.sc[3]))),col="blue") +
-    geom_hline(yintercept=0,linetype=2)+ geom_vline(xintercept=0,linetype=2) +
-    ggtitle(plottitle)
+    geom_hline(yintercept=0,linetype=2)+ geom_vline(xintercept=0,linetype=2)
   
   return(site.ca.p)
 }
 
 # Remove seasonal variation by looking at odd periods (fall) and even periods (spring) separately
+# Can add ellipses from our clustering result from before
+sitegroups <- data.frame(sites=as.integer(names(cutg)),groups=cutg)
+
 CA.ggplot(site2) + ggtitle("Correspondence Analysis, West End (Site 2)")
 
 ```
@@ -1217,31 +1330,194 @@ Logistic regression of phase state by otter density
 # First, coerce data into "kelp forest" or "urchin barren" (binary)
 # pooling data from sites 2,3, and 7
 ott.state.bin <- subset(sites,sites$station %in% c(2,3,7)) #subset of 'master' (long form)
-ott.state.bin <- dcast(ott.state.bin,period~species,value.var="dens",fun.aggregate = mean) # cast to data frame
-ott.state.bin <- ott.state.bin[,c("period","29","589")]
+ott.state.bin <- dcast(ott.state.bin,period~species+station,value.var="dens") # cast to data frame
+ott.state.bin <- ott.state.bin[,c("period","29_2","29_3","29_7","589_2","589_3","589_7")]
 
 # Have to manually match otter counts to periods, and assume population statis between periods when otters weren't counted
 ott.counts <- c(rep(0,27),rep(10,3),9,rep(13,4),18,rep(20,3),24,22,20,20,30,29,29,29,29,31,31,34,30,34,42)
 ott.state.bin$ott.count <- ott.counts
-ott.state.bin$red.binary <- NA
+ott.state.bin$red.binary.2 <- NA
+ott.state.bin$red.binary.3 <- NA
+ott.state.bin$red.binary.7 <- NA
 
 # Criteria (somewhat arbitrary...)
 # Barren = density of red urchins > 2/m2 AND macrocystis < 0.5/m2
 # Kelp Forest = density of red urchins < 2/m2 AND macrocystis > 0.5/m2
-ott.state.bin$red.binary <- apply(ott.state.bin,MARGIN=1,function(x){
-  out<-NA
-  if(x["29"]>2 & x["589"]<0.5) out = 0
-  if(x["29"]<2 & x["589"]>0.5) out = 1
+ott.state.bin$red.binary.2 <- apply(ott.state.bin,MARGIN=1,function(x){
+  out <- NA
+  if(!is.na(x["29_2"]+x["589_2"])) {
+    if(x["29_2"]>2 & x["589_2"]<0.5) out = 0
+    if(x["29_2"]<2 & x["589_2"]>0.5) out = 1
+  }
+  return(out)
+  })
+
+ott.state.bin$red.binary.3 <- apply(ott.state.bin,MARGIN=1,function(x){
+  out <- NA
+  if(!is.na(x["29_3"]+x["589_3"])) {
+    if(x["29_3"]>2 & x["589_3"]<0.5) out = 0
+    if(x["29_3"]<2 & x["589_3"]>0.5) out = 1
+  }
+  return(out)
+  })
+
+ott.state.bin$red.binary.7 <- apply(ott.state.bin,MARGIN=1,function(x){
+  out <- NA
+  if(!is.na(x["29_7"]+x["589_7"])) {
+    if(x["29_7"]>2 & x["589_7"]<0.5) out = 0
+    if(x["29_7"]<2 & x["589_7"]>0.5) out = 1
+  }
   return(out)
   })
 
 # Plot with logistic fit
-ggplot(ott.state.bin,aes(x=ott.count,y=red.binary)) +
-  geom_point() +
+ggplot(ott.state.bin,aes(x=ott.count,y=red.binary.2)) +
+  geom_point(na.rm=T) +
+  geom_point(aes(y=red.binary.3),na.rm=T) +
+  geom_point(aes(y=red.binary.7),na.rm=T) +
   ggtitle("Ecosystem State as a Function of Otter Abundance") +
   xlab("Otter Abundance, # ind.") +
   ylab("Ecosystem State") +
   scale_y_continuous(breaks=c(0,1),labels=c("Barren","Kelp Forest")) +
-  geom_smooth(method="glm",method.args = list(family = "binomial"),se=F) +
+  geom_smooth(method="glm",method.args = list(family = "binomial"),se=F,na.rm=T) +
   geom_vline(xintercept=19,col="red",linetype=2) +
   geom_text(aes(22,0.1,label = "19 Otters"),col="darkred")
+```
+
+Constrained clustering -- Multivariate Regression Tree.  Let's try to organize (cluster) the data in a hierarchical fashion based on a series of external explanatory variables.  Here, we'll try splitting the benthic dataset into algaes and invertebrates, and try to predict clustering of invertebrate community, based on algae and otter population and time (period).
+
+```{r MRT}
+### Use data from site 2, just as a place to start
+require(mvpart)
+
+# split dataset; invertebrates are response data, algaes are explanatory data
+spp.key.bdens <- spp.key[spp.key$DataSet=="Benthic density",]
+site2.inverts <- site2[,1:12] # invert columns
+names(site2.inverts) <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc") # rename variables
+site2.inverts.norm <- decostand(site2.inverts,method="normalize") # Euclidean norm (chord) transformation (MRT is a euclidean procedure)
+
+
+# explanatory variables: algaes, period(time), and otter counts. No normalization of these variables. keeping period as a separate
+# dataframe/vector, because it is dominant
+site2.expl <- site2[,13:19]
+site2.period <- data.frame(period=as.numeric(row.names(site2.expl)))
+site2.expl$ott <- ott.counts[-44]
+names(site2.expl) <- c("cys","lam","ymac","youn","eis","pter","mac","ott")
+
+# The MRT procedure
+# ************************
+
+# Just based on time
+site2.mvpart.per <- mvpart(data.matrix(site2.inverts.norm)~., site2.period,cp=0,margin=0.08,xv="pick",xvmult=100,legend=F)
+
+# Suggests 7 groups, split by time as follows:
+# Periods 1:5 (5 observations)
+# Periods 6:10 (4 observations)
+# Periods 11:42 (29 observations)
+# Periods 43:48 (5 observatios)
+# Periods 49:54 (5 observations)
+# Periods 55:60 (3 observations)
+# Periods 61:62 (2 observations)
+
+## What about constrained by algae and otters?
+site2.mvpart.ott <- mvpart(data.matrix(site2.inverts.norm)~., site2.expl,cp=0,margin=0.08,xv="pick",xvmult=500,legend=F)
+# Suggests 5 groups, where the first split is by otter count (less than or greater than 19 otters).  Other discriminatory variables
+# further down the tree are eisenia, laminaria, and (under lam) macrocystis
+
+### With a Hellinger transformation instead of Euclidean norm
+site2.inverts.hel <- decostand(site2.inverts,method="hel")
+# based on time
+site2.hel.mvpart.per <- mvpart(data.matrix(site2.inverts.hel)~., site2.period,cp=0,margin=0.08,xv="pick",xvmult=100,legend=F)
+# Suggests 4 groups, with similar (but fewer) breaks than the above (breaks after periods 10, 42,and 54)
+# We can plot these groups on our CA from before!
+summary(site2.hel.mvpart.per)
+(gr<-site2.hel.mvpart.per$where)
+# Renumber groups sequentially
+aa<-1
+gr2 <- rep(1,length(gr))
+for(i in 2:length(gr)) {
+  if(gr[i]!=gr[i-1]) aa<-aa+1
+  gr2[i] <- aa
+}
+gr<-as.character(gr)
+cols <- c("1"="red","2"="blue","3"="yellow","4"="green")
+
+# Compute CA
+site2.ca <- vegan::cca(site2)
+  
+# Extract scores for plotting
+sit.sc <- as.data.frame(scores(site2.ca,choices=c(1,2),display="wa",scaling=1))
+sit.sc["period"]<-row.names(sit.sc)
+spe.ca.sc <- as.data.frame(scores(site2.ca,choices=c(1,2),display="sp",scaling=1))
+spe.ca.sc["species"]<-as.numeric(row.names(spe.ca.sc))
+  
+# Adding species names for easier interpretation
+spe.ca.sc["spename"]<-left_join(spe.ca.sc,spp.key[spp.key$DataSet=="Benthic density",],by=c("species"="SpeciesCode"))$SpeciesName
+  
+axes.names <- names(sit.sc)
+  
+# The plot
+ggplot(spe.ca.sc) +
+  geom_text(data=spe.ca.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(spe.ca.sc[4]))),family="serif",col="red",size=3)+
+  geom_text(data=sit.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(sit.sc[3])),col=gr)) +
+  geom_hline(yintercept=0,linetype=2)+ geom_vline(xintercept=0,linetype=2)
+
+
+# based on algae and otters
+site2.hel.mvpart.ott <- mvpart(data.matrix(site2.inverts.hel)~., site2.expl,cp=0,margin=0.08,xv="pick",xvmult=100,legend=F)
+# In this version of species transformation, it suggests a STRONG impact of just the "otter effect" (fewer or more than 19 otters), with little effect of other variables after that on error (although 8 groups works)
+
+# So far, this analysis really supports the idea of otters as a primary force, as the 19 otters split has come up in every analysis. Let's keep investigating!
+```
+
+### LDA of chronological grouping with environmental variables
+Let's see if the grouping emerging from the chronological constraint (the four groups arising from the MRT analysis with Hellinger-transformed data) can be related to the other explanatory variables.  Instead of a constrained clustering like the one immediately above (site2.hel.mvpart.ott), let's do a linear discriminant analysis.
+
+```{r lda chronological groups explained by algaes/otters}
+# note: within-group covariance matrices of the explanatory variables must be homogeneous
+site2.expl.d1 <- dist(site2.expl)
+(env.MHV <- betadisper(site2.expl.d1,gr2))
+anova(env.MHV)
+permutest(env.MHV)
+# Differences are not significant, so the within-group covariance matrices are homogeneous. We can continue
+
+## Computation of the LDA
+require(MASS)
+(site2.lda <- lda(gr2 ~ cys+lam+ymac+youn+eis+pter+mac+ott, data=site2.expl))
+summary(site2.lda)
+
+# Display the group means for the explanatory variables
+site2.lda$means
+(coeffs <- site2.lda$scaling)
+# Canonical eigenvalues (i.e., the canonical F-statistics for each axis)
+site2.lda$svd^2
+
+# Position the objects in the space of the canonical variates
+(site2.lda.coords <- as.data.frame(predict(site2.lda)$x))
+
+# Classification of the objects
+(site2.lda.class <- predict(site2.lda)$class)
+
+# Table of prior versus predicted classifications
+(site2.lda.table <- table(gr2,site2.lda.class))
+# Proportion correctly classified
+diag(prop.table(site2.lda.table,1)) # Does pretty well!
+
+# Plot the objects in the space of the canonical variates, with colors according to their classification
+
+site2.lda.coords$per <- row.names(site2.lda.coords)
+site2.lda.coords$grs <- site2.lda.class
+
+site2.lda.plot <- ggplot(site2.lda.coords,aes(x=LD1,y=LD2))+
+  geom_text(aes(label=per,col=grs)) + 
+  scale_color_manual(values=c(2,3,4,6),name="LDA Groups",labels=c("Group 1","Group 2","Group 3","Group 4")) +
+  ggtitle("LDA, Site 2 with Predicted Groups")
+site2.lda.plot
+
+```
+Fish data predicted by benthic data??
+
+```{r constrained clustering benth and fish}
+# We'll do a redundancy analysis of f
+
+```
