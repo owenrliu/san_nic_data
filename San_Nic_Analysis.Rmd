@@ -1334,8 +1334,12 @@ ott.state.bin <- dcast(ott.state.bin,period~species+station,value.var="dens") # 
 ott.state.bin <- ott.state.bin[,c("period","29_2","29_3","29_7","589_2","589_3","589_7")]
 
 # Have to manually match otter counts to periods, and assume population statis between periods when otters weren't counted
-ott.counts <- c(rep(0,27),rep(10,3),9,rep(13,4),18,rep(20,3),24,22,20,20,30,29,29,29,29,31,31,34,30,34,42)
-ott.state.bin$ott.count <- ott.counts
+ott.counts.west <- c(rep(0,27),rep(10,3),9,rep(13,4),18,rep(20,3),24,22,20,20,30,29,29,29,29,31,31,18,30,34,42)
+ott.counts.north <- c(rep(0,27),rep(4,3),5,rep(1,8),0,1,rep(0,7),1,1,0,1,4,0)
+ott.counts.south <- c(rep(0,30),3,rep(0,4),2,rep(0,3),3,6,13,13,2,2,2,2,2,5,5,19,2,8,6)
+ott.state.bin$ott.count.west <- ott.counts.west
+ott.state.bin$ott.count.north <- ott.counts.north
+ott.state.bin$ott.count.south <- ott.counts.south
 ott.state.bin$red.binary.2 <- NA
 ott.state.bin$red.binary.3 <- NA
 ott.state.bin$red.binary.7 <- NA
@@ -1371,7 +1375,7 @@ ott.state.bin$red.binary.7 <- apply(ott.state.bin,MARGIN=1,function(x){
   })
 
 # Plot with logistic fit
-ggplot(ott.state.bin,aes(x=ott.count,y=red.binary.2)) +
+ggplot(ott.state.bin,aes(x=ott.count.west,y=red.binary.2)) +
   geom_point(na.rm=T) +
   geom_point(aes(y=red.binary.3),na.rm=T) +
   geom_point(aes(y=red.binary.7),na.rm=T) +
@@ -1401,7 +1405,7 @@ site2.inverts.norm <- decostand(site2.inverts,method="normalize") # Euclidean no
 # dataframe/vector, because it is dominant
 site2.expl <- site2[,13:19]
 site2.period <- data.frame(period=as.numeric(row.names(site2.expl)))
-site2.expl$ott <- ott.counts[-44]
+site2.expl$ott <- ott.counts.west[-44] # West end site
 names(site2.expl) <- c("cys","lam","ymac","youn","eis","pter","mac","ott")
 
 # The MRT procedure
@@ -1514,10 +1518,118 @@ site2.lda.plot <- ggplot(site2.lda.coords,aes(x=LD1,y=LD2))+
   ggtitle("LDA, Site 2 with Predicted Groups")
 site2.lda.plot
 
+# Things to notice
+
 ```
+
+Does a redundancy analysis tell us something similar?
+
+```{r RDA, inverts predicted by algaes and otters}
+# Again, starting with Site 2 as an example
+# Using the hellinger-transformed data, and the algaes and otters as explanatory variables
+
+site2.rda <- rda(site2.inverts.hel~.,site2.expl)
+summary(site2.rda, scaling=2)
+
+# Adjusted R^2 of the model
+# ************************
+(R2 <- RsquareAdj(site2.rda)$r.squared) # original R2
+(R2 <- RsquareAdj(site2.rda)$adj.r.squared) # adjusted R2
+
+# Triplots of the result (triplots since they represent sites (i.e. objects/periods), response variables(i.e. inverts) and explanatory variables (i.e. algaes and otters)
+# **********************
+# Scaling 1: distance triplot (distances between objects represent their Euclidean distance in multidimensional space)
+plot(site2.rda, scaling=1, main="Triplot RDA site2.hel ~ site2.expl - scaling 1")
+# adding arrows for species
+
+spe.sc <- scores(site2.rda, choices=1:2,scaling=1,display="sp")
+arrows(0,0,spe.sc[,1],spe.sc[,2],length=0,lty=1,col="red")
+
+# Scaling 2: correlation triplot(angles between descriptors represent their correlations)
+plot(site2.rda, scaling=2, main="Triplot RDA site2.hel ~ site2.expl - scaling 2")
+# adding arrows for species
+
+spe2.sc <- scores(site2.rda, choices=1:2,scaling=2,display="sp")
+arrows(0,0,spe2.sc[,1],spe2.sc[,2],length=0,lty=1,col="red")
+
+
+### We can use permutation to test significance of the model and of indiivdual axes
+# function is called vegan::anova(), even though it is now the same as a classical anova
+
+# Global test of the RDA
+anova.cca(site2.rda,step=1000) # highly significant (Pr>F = 0.001)
+# Tests of the canonical axes
+anova.cca(site2.rda,by="axis",step=1000) # Only the first two axes are significant at the .05 (and .01) levels
+
+
+```
+
+RDA, other sites
+```{r RDA other sites}
+# Have to manually match otter counts to periods, and assume population statis between periods when otters weren't counted
+ott.counts.west <- c(rep(0,29),rep(10,3),9,rep(13,4),18,18,rep(20,3),24,22,20,20,30,29,29,29,29,31,31,18,18,30,34,42)
+ott.counts.north <- c(rep(0,29),rep(4,3),5,rep(1,9),0,1,rep(0,7),1,1,0,0,1,4,0)
+ott.counts.south <- c(rep(0,32),3,rep(0,4),2,2,rep(0,3),3,6,13,13,2,2,2,2,2,5,5,19,19,2,8,6)
+
+
+ott.abun.key <- data.frame(period=sort(unique(benthdens.dat$Period)),west=ott.counts.west,north=ott.counts.north,south=ott.counts.south)
+
+# RDA function for any site, starting with raw site data
+site.RDA <- function(site.dat,region,constrain=FALSE) {
+  # Transform species data
+  inverts <- site.dat[,1:12] # invert columns
+  names(inverts) <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc") # rename variables
+  inverts.hel <- decostand(inverts,method="hel") # Hellinger transform
+  
+  # explanatory variables: algaes, period(time), and otter counts. No normalization of these variables.
+  
+  reg <- data.frame(period=ott.abun.key$period) # temp dataframe for otter counts appropriate to the given site's region
+  reg$ott <- switch(region, "west"=ott.abun.key$west,"north"=ott.abun.key$north,"south"=ott.abun.key$south)
+  
+  expl <- site.dat[,13:19] # algaes
+  expl$ott <- reg$ott[reg$period %in% intersect(row.names(site.dat),reg$period)] #otters
+  names(expl) <- c("cys","lam","ymac","youn","eis","pter","mac","ott") # change variable names
+  
+  # Using the hellinger-transformed data, and the algaes and otters as explanatory variables
+  if(constrain) {site.rda <- rda(inverts.hel~cys + lam + ymac + youn + eis + pter + mac + Condition(ott),expl)}
+  else(site.rda <- rda(inverts.hel~cys + lam + ymac + youn + eis + pter + mac + ott,expl))
+  print(summary(site.rda, scaling=2))
+  
+  # Adjusted R^2 of the model
+  # ************************
+  print(paste("r squared = ",RsquareAdj(site.rda)$r.squared)) # original R2
+  print(paste("adj r squared = ",RsquareAdj(site.rda)$adj.r.squared)) # adjusted R2
+  
+  # Triplots of the result (triplots since they represent sites (i.e. objects/periods), response variables(i.e. inverts) and explanatory variables (i.e. algaes and otters)
+  # **********************
+  # Scaling 1: distance triplot (distances between objects represent their Euclidean distance in multidimensional space)
+  plot(site.rda, scaling=1, main=c("Triplot RDA inverts.hel ~ expl - scaling 1 - "))
+  # adding arrows for species
+  
+  spe.sc <- scores(site.rda, choices=1:2,scaling=1,display="sp")
+  arrows(0,0,spe.sc[,1],spe.sc[,2],length=0,lty=1,col="red")
+  
+  # Scaling 2: correlation triplot(angles between descriptors represent their correlations)
+  plot(site.rda, scaling=2, main=c("Triplot RDA inverts.hel ~ expl - scaling 2 - "))
+  # adding arrows for species
+  
+  spe2.sc <- scores(site.rda, choices=1:2,scaling=2,display="sp")
+  arrows(0,0,spe2.sc[,1],spe2.sc[,2],length=0,lty=1,col="red")
+  
+  
+  ### We can use permutation to test significance of the model and of indiivdual axes
+  # function is called vegan::anova(), even though it is now the same as a classical anova
+  
+  # Global test of the RDA
+  print(anova.cca(site.rda,step=1000)) #
+  # Tests of the canonical axes
+  print(anova.cca(site.rda,by="margin",step=1000)) #effects of individual explanatory terms
+}
+```
+
 Fish data predicted by benthic data??
 
 ```{r constrained clustering benth and fish}
-# We'll do a redundancy analysis of f
+# We'll do a redundancy analysis of fish
 
 ```
