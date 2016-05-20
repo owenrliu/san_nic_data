@@ -1,0 +1,152 @@
+---
+title: "CCM_san_nic"
+author: "Owen Liu"
+date: "May 20, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(reshape2)
+library(vegan)
+library(rgdal)
+library(multispatialCCM)
+
+#### Data ####
+#note: all raw data has a .dat
+W_D <- getwd()
+
+# benthic species density
+#**************************************
+benthdens.dat <- read.csv(file=paste(W_D,'/data/Benthic density raw data.csv',sep=''))
+#fix dates in the datasets to be more readable by R
+betterDates <-function(dat) {
+  dates<-as.Date(as.character(dat$Date),format="%m/%d/%y")
+  return(dates)
+}
+benthdens.dat$Date <- betterDates(benthdens.dat)
+#**************************************
+
+# Species Key
+#*************************************
+spp.key <- read.csv(file=paste(W_D,'/data/Table4_Species_sampled.csv',sep='')) # All species, all surveys
+spp.key.bdens <- spp.key[spp.key$DataSet=="Benthic density",] # just benthic density surveys
+# better names
+spp.key.bdens$name <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc","cys","lam","ymac","youn","eis","pter","mac")
+#**************************************
+
+# Otter data
+#***********************************
+ott <- read.csv(file=paste(W_D,"/data/Table2_independent_sea_otters.csv",sep=""))
+ott$Date<-as.Date(ott$Date,format="%m/%d/%Y")
+# Have to manually match otter counts to periods in the benthic data, and assume population statis between periods when otters weren't counted
+ott.counts.west <- c(rep(0,29),rep(10,3),9,rep(13,4),18,18,rep(20,3),24,22,20,20,30,29,29,29,29,31,31,18,18,30,34,42)
+ott.counts.north <- c(rep(0,29),rep(4,3),5,rep(1,9),0,1,rep(0,7),1,1,0,0,1,4,0)
+ott.counts.south <- c(rep(0,32),3,rep(0,4),2,2,rep(0,3),3,6,13,13,2,2,2,2,2,5,5,19,19,2,8,6)
+ott.abun.key <- data.frame(period=sort(unique(benthdens.dat$Period)),west=ott.counts.west,north=ott.counts.north,south=ott.counts.south)
+
+# **********************************
+
+## Create separate datasets for each site/swath combo (rows are periods, columns are species), and cast to matrices of periodxspecies
+# **********************************
+sites.swaths <- aggregate(list(dens=benthdens.dat$Density),by=list(station=benthdens.dat$Station,period=benthdens.dat$Period,swath=benthdens.dat$Swath,species=benthdens.dat$SpeciesCode), FUN=mean)
+
+sit.names <- unique(sites.swaths$station)
+
+
+for(i in sit.names) {
+  dat.t <- subset(sites.swaths,sites.swaths$station==i) #subset of 'master' (long form) for a given site
+  for(j in unique(dat.t$swath)) {
+    dat.t.swath <- subset(dat.t,dat.t$swath==j)
+    dat.t.swath <- acast(dat.t.swath,period~species,value.var="dens") # cast to matrix
+    dat.t.swath <- as.data.frame((dat.t.swath))
+    names(dat.t.swath) <- spp.key.bdens$name
+    datname <- paste0("site",i,".",j)
+    assign(datname,dat.t.swath) # assign raw data to variable name with site and swath (e.g. "site1.10L")
+  }
+}
+#*************************************
+```
+
+Convergent cross mapping of the time series.  Based on Sugihara et al. 2012 Science; and Clark et al. 2015 Ecology.
+
+```{r CCM benthic data}
+require(multispatialCCM)
+
+# Hellinger-transform the data
+site2.10L.hel <- decostand(site2.10L,"hel")
+site2.22L.hel <- decostand(site2.22L,"hel")
+site2.32R.hel <- decostand(site2.32R,"hel")
+site2.39L.hel <- decostand(site2.39L,"hel")
+site2.45L.hel <- decostand(site2.45L,"hel")
+NA.row <- as.data.frame(rep(NA,length(site2.10L.hel))) ## NAs are for multispatial CCM, see package and text
+NA.row <- as.data.frame(t(NA.row))
+site2.all.hel <- bind_rows(site2.10L.hel,NA.row,site2.22L.hel,NA.row,site2.32R.hel,NA.row,site2.39L.hel,NA.row,site2.45L.hel)
+site2.all.hel <- as.data.frame(site2.all.hel)
+
+### First, try to find optimal E (embedding dimension) 
+
+maxE<-12 #Maximum E to test
+
+# Matrix for storing output
+Etest<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
+
+# Loop over potential E values and calculate predictive ability rho
+# of each process for its own dynamics
+for(E in 2:maxE) {
+#Uses defaults of looking forward one prediction step (predstep)
+#And using time lag intervals of one time step (tau)
+  for(i in names(site2.all.hel)) {
+    Etest[E-1,i]<-SSR_pred_boot(A=site2.all.hel[,i], E=E, predstep=1, tau=1)$rho
+  }
+}
+# Look at plots to find E for each variable at which predictive ability rho is maximized
+matplot(2:maxE, Etest[2:length(Etest)], type="l", col=rainbow(19), lty=1:3,
+xlab="E", ylab="rho", lwd=2)
+par(xpd=T,mar=c(5,4,4,12))
+legend(10.5,0.8, names(Etest[2:length(Etest)]), lty=1:3, col=rainbow(19), lwd=2, bty="n")
+
+## Remove NA columns (species for which there was no variation (e.g. rare species, lots of zeros))
+Etest <- Etest[,colSums(is.na(Etest)) == 0]
+
+# find best E for each variable (maximum absolute value rho)
+bestE <- data.frame(E=sapply(Etest[2:length(Etest)],function(x) Etest$E[abs(x)==max(abs(x))]))
+bestE$rho <- sapply(Etest[2:length(Etest)],function(x) x[abs(x)==max(abs(x))])
+
+### Now we have optimal embedding dimension for each variable
+
+#****************************************
+# Check data for nonlinear signal that is not dominated by noise
+# Checks whether predictive ability of processes declines with increasing time distance
+signal_purp_check <- SSR_check_signal(A=site2.10L.hel$purp,E=bestE["purp","E"],predsteplist=1:15,matchSugi = 1)
+plot(signal_purp_check$predatout,type="l",col="purple")
+
+signal_red_check <- SSR_check_signal(A=site2.10L.hel$red,E=bestE["red","E"],predsteplist=1:15,matchSugi = 1)
+plot(signal_red_check$predatout,type="l",col="red")
+
+signal_mac_check <- SSR_check_signal(A=site2.10L.hel$mac,E=bestE["mac","E"],predsteplist=1:15,matchSugi = 1)
+plot(signal_mac_check$predatout,type="l",col="darkgreen")
+
+signal_cys_check <- SSR_check_signal(A=site2.10L.hel$cys,E=bestE["cys","E"],predsteplist=1:15,matchSugi = 1)
+plot(signal_cys_check$predatout,type="l",col="orange")
+#******************************
+
+# #Run the CCM test
+# #E_A and E_B are the embedding dimensions for A and B.
+# #tau is the length of time steps used (default is 1)
+# #iterations is the number of bootsrap iterations (default 100)
+# # Does A "cause" B?
+# #Note - increase iterations to 100 for consistant results
+# CCM_boot_A<-CCM_boot(Accm, Bccm, E_A, tau=1, iterations=10)
+# # Does B "cause" A?
+# CCM_boot_B<-CCM_boot(Bccm, Accm, E_B, tau=1, iterations=10)
+# #Test for significant causal signal
+# #See R function for details
+# (CCM_significance_test<-ccmtest(CCM_boot_A,
+# CCM_boot_B))
+
+
+```

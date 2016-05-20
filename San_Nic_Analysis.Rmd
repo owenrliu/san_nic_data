@@ -1396,6 +1396,7 @@ require(mvpart)
 
 # split dataset; invertebrates are response data, algaes are explanatory data
 spp.key.bdens <- spp.key[spp.key$DataSet=="Benthic density",]
+spp.key.bdens$name <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc","cys","lam","ymac","youn","eis","pter","mac")
 site2.inverts <- site2[,1:12] # invert columns
 names(site2.inverts) <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc") # rename variables
 site2.inverts.norm <- decostand(site2.inverts,method="normalize") # Euclidean norm (chord) transformation (MRT is a euclidean procedure)
@@ -1626,6 +1627,7 @@ site.RDA <- function(site.dat,region,constrain=FALSE) {
   print(anova.cca(site.rda,by="margin",step=1000)) #effects of individual explanatory terms
 }
 ```
+
 
 Fish data predicted by benthic data??
 
