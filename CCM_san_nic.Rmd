@@ -76,26 +76,31 @@ Convergent cross mapping of the time series.  Based on Sugihara et al. 2012 Scie
 ```{r CCM benthic data}
 require(multispatialCCM)
 
+# Starting with site(station) 2 (West End of SNI)
 # Hellinger-transform the data
 site2.10L.hel <- decostand(site2.10L,"hel")
 site2.22L.hel <- decostand(site2.22L,"hel")
 site2.32R.hel <- decostand(site2.32R,"hel")
 site2.39L.hel <- decostand(site2.39L,"hel")
 site2.45L.hel <- decostand(site2.45L,"hel")
-NA.row <- as.data.frame(rep(NA,length(site2.10L.hel))) ## NAs are for multispatial CCM, see package and text
+NA.row <- as.data.frame(rep(NA,length(site2.10L.hel))) ## NAs are for linking "spatially-replicated time series" for multispatial CCM, see package and text
 NA.row <- as.data.frame(t(NA.row))
+names(NA.row) <- names(site2.10L)
+
+# Bind all swaths ("replicates") together to produce the final dataset for testing
 site2.all.hel <- bind_rows(site2.10L.hel,NA.row,site2.22L.hel,NA.row,site2.32R.hel,NA.row,site2.39L.hel,NA.row,site2.45L.hel)
 site2.all.hel <- as.data.frame(site2.all.hel)
 
 ### First, try to find optimal E (embedding dimension) 
+#***************************
 
-maxE<-12 #Maximum E to test
+maxE<-18 #Maximum E to test
 
 # Matrix for storing output
 Etest<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
 
-# Loop over potential E values and calculate predictive ability rho
-# of each process for its own dynamics
+# For each variable/species' timeseries, loop over potential E values and 
+# calculate predictive ability rho of each process for its own dynamics
 for(E in 2:maxE) {
 #Uses defaults of looking forward one prediction step (predstep)
 #And using time lag intervals of one time step (tau)
@@ -103,14 +108,20 @@ for(E in 2:maxE) {
     Etest[E-1,i]<-SSR_pred_boot(A=site2.all.hel[,i], E=E, predstep=1, tau=1)$rho
   }
 }
+
 # Look at plots to find E for each variable at which predictive ability rho is maximized
 matplot(2:maxE, Etest[2:length(Etest)], type="l", col=rainbow(19), lty=1:3,
 xlab="E", ylab="rho", lwd=2)
 par(xpd=T,mar=c(5,4,4,12))
-legend(10.5,0.8, names(Etest[2:length(Etest)]), lty=1:3, col=rainbow(19), lwd=2, bty="n")
+legend(12.5,0.8, names(Etest[2:length(Etest)]), lty=1:3, col=rainbow(19), lwd=2, bty="n")
 
 ## Remove NA columns (species for which there was no variation (e.g. rare species, lots of zeros))
 Etest <- Etest[,colSums(is.na(Etest)) == 0]
+
+# Graph relationships between embedding dimension and rho
+Emelt <- melt(Etest,id.vars="E") # long form for plotting
+ggplot(Emelt,aes(x=E,y=value)) +geom_line()+facet_wrap("variable")
+# Many of the plots are relatively flat, i.e. there isn't a huge tradeoff from choosing a shorter, more parsimonious embedding dimension.
 
 # find best E for each variable (maximum absolute value rho)
 bestE <- data.frame(E=sapply(Etest[2:length(Etest)],function(x) Etest$E[abs(x)==max(abs(x))]))
@@ -121,32 +132,64 @@ bestE$rho <- sapply(Etest[2:length(Etest)],function(x) x[abs(x)==max(abs(x))])
 #****************************************
 # Check data for nonlinear signal that is not dominated by noise
 # Checks whether predictive ability of processes declines with increasing time distance
-signal_purp_check <- SSR_check_signal(A=site2.10L.hel$purp,E=bestE["purp","E"],predsteplist=1:15,matchSugi = 1)
+dev.off()
+signal_purp_check <- SSR_check_signal(A=site2.all.hel$purp,E=bestE["purp","E"],predsteplist=1:15,matchSugi = 0)
 plot(signal_purp_check$predatout,type="l",col="purple")
 
-signal_red_check <- SSR_check_signal(A=site2.10L.hel$red,E=bestE["red","E"],predsteplist=1:15,matchSugi = 1)
+signal_red_check <- SSR_check_signal(A=site2.all.hel$red,E=bestE["red","E"],predsteplist=1:15,matchSugi = 0)
 plot(signal_red_check$predatout,type="l",col="red")
 
-signal_mac_check <- SSR_check_signal(A=site2.10L.hel$mac,E=bestE["mac","E"],predsteplist=1:15,matchSugi = 1)
+signal_mac_check <- SSR_check_signal(A=site2.all.hel$mac,E=bestE["mac","E"],predsteplist=1:15,matchSugi = 0)
 plot(signal_mac_check$predatout,type="l",col="darkgreen")
 
-signal_cys_check <- SSR_check_signal(A=site2.10L.hel$cys,E=bestE["cys","E"],predsteplist=1:15,matchSugi = 1)
+signal_cys_check <- SSR_check_signal(A=site2.all.hel$cys,E=bestE["cys","E"],predsteplist=1:15,matchSugi = 0)
 plot(signal_cys_check$predatout,type="l",col="orange")
 #******************************
 
-# #Run the CCM test
-# #E_A and E_B are the embedding dimensions for A and B.
-# #tau is the length of time steps used (default is 1)
-# #iterations is the number of bootsrap iterations (default 100)
-# # Does A "cause" B?
-# #Note - increase iterations to 100 for consistant results
-# CCM_boot_A<-CCM_boot(Accm, Bccm, E_A, tau=1, iterations=10)
-# # Does B "cause" A?
-# CCM_boot_B<-CCM_boot(Bccm, Accm, E_B, tau=1, iterations=10)
-# #Test for significant causal signal
-# #See R function for details
-# (CCM_significance_test<-ccmtest(CCM_boot_A,
-# CCM_boot_B))
+```
 
+Do red and purple urchins drive each other?
 
+```{r red vs. purple}
+#Run the CCM test
+#E_A and E_B are the embedding dimensions for A and B.
+#tau is the length of time steps used (default is 1)
+#iterations is the number of bootsrap iterations (default 100)
+# Does red "cause" purp?
+
+# For both species' timeseries, best embedding dimension was 5
+E_urch <- 5
+
+# Test for "red causing purple"
+CCM_boot_red<-CCM_boot(A=site2.all.hel$red, B=site2.all.hel$purp, E=5, tau=1, iterations=100)
+# quick plot of result
+plot(CCM_boot_red$Lobs,CCM_boot_red$rho,type="l",col="red",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff")
+
+# Does purp "cause" red?
+CCM_boot_purp<-CCM_boot(A=site2.all.hel$purp, B=site2.all.hel$red, E=5, tau=1, iterations=100)
+lines(CCM_boot_purp$Lobs,CCM_boot_purp$rho,type="l",col="purple")
+
+#Test for significant causal signal
+#See R function for details
+(CCM_significance_test<-ccmtest(CCM_boot_red,
+CCM_boot_purp))
+
+```
+
+Red urchins and macrocystis
+
+```{r red and mac CCM}
+# Test for "red causing mac"
+CCM_red_cause_mac<-CCM_boot(A=site2.all.hel$red, B=site2.all.hel$mac, E=5, tau=1, iterations=100)
+# quick plot of result
+plot(CCM_red_cause_mac$Lobs,CCM_red_cause_mac$rho,type="l",col="red",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff",ylim=c(0,0.7))
+
+# Does mac "cause" red?
+CCM_mac_cause_red<-CCM_boot(A=site2.all.hel$purp, B=site2.all.hel$red, E=5, tau=1, iterations=100)
+lines(CCM_mac_cause_red$Lobs,CCM_mac_cause_red$rho,type="l",col="green")
+
+#Test for significant causal signal
+#See R function for details
+(CCM_significance_test<-ccmtest(CCM_red_cause_mac,
+CCM_mac_cause_red))
 ```
