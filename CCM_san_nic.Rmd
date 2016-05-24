@@ -151,60 +151,135 @@ plot(signal_mac_check$predatout,type="l",col="darkgreen")
 
 signal_cys_check <- SSR_check_signal(A=site2.all.hel$cys,E=bestE["cys","E"],predsteplist=1:18,matchSugi = 0)
 plot(signal_cys_check$predatout,type="l",col="orange")
+```
 
-### a major problem in these "diagnostic plots" for some variables is the rise in predictive power with prediction interval (U-shaped graphs), suggesting cyclical patterns or a temporal trend in the data.  Try first-differencing and standardizing each timeseries to unit variance (mean 0, sd 1).
+A major problem in these "diagnostic plots" for some variables is the rise in predictive power with prediction interval (U-shaped graphs), suggesting cyclical patterns or a temporal trend in the data.  Try standardizing each timeseries to unit variance (mean 0, sd 1).
+
+```{r standardizing}
+
 #*********************
-site2.10L.st.diff <- decostand(site2.10L.diff,method="standardize")
-site2.22L.st.diff <- decostand(site2.22L.diff,method="standardize")
-site2.32R.st.diff <- decostand(site2.32R.diff,method="standardize")
-site2.39L.st.diff <- decostand(site2.39L.diff,method="standardize")
-site2.45L.st.diff <- decostand(site2.45L.diff,method="standardize")
-NA.row <- as.data.frame(rep(NA,length(site2.10L.st.diff))) ## NAs are for linking "spatially-replicated time series" for multispatial CCM, see package and text
+site2.10L.st <- decostand(site2.10L,method="standardize")
+site2.22L.st <- decostand(site2.22L,method="standardize")
+site2.32R.st <- decostand(site2.32R,method="standardize")
+site2.39L.st <- decostand(site2.39L,method="standardize")
+site2.45L.st <- decostand(site2.45L,method="standardize")
+NA.row <- as.data.frame(rep(NA,length(site2.10L.st))) ## NAs are for linking "spatially-replicated time series" for multispatial CCM, see package and text
 NA.row <- as.data.frame(t(NA.row))
-names(NA.row) <- names(site2.10L.st.diff)
+names(NA.row) <- names(site2.10L.st)
 
 # Bind all swaths ("replicates") together to produce the final dataset for testing
-site2.all.st.diff <- bind_rows(site2.10L.st.diff,NA.row,site2.22L.st.diff,NA.row,site2.32R.st.diff,NA.row,site2.39L.st.diff,NA.row,site2.45L.st.diff)
-site2.all.st.diff <- as.data.frame(site2.all.st.diff)
+site2.all.st <- bind_rows(site2.10L.st,NA.row,site2.22L.st,NA.row,site2.32R.st,NA.row,site2.39L.st,NA.row,site2.45L.st)
+site2.all.st <- as.data.frame(site2.all.st)
 
 ## Embedding dimension
-Etest.diff<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
+Etest.st<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
 
 # For each variable/species' timeseries, loop over potential E values and 
 # calculate predictive ability rho of each process for its own dynamics
 for(E in 2:maxE) {
 #Uses defaults of looking forward one prediction step (predstep)
 #And using time lag intervals of one time step (tau)
-  for(i in names(site2.all.st.diff)) {
-    Etest.diff[E-1,i]<-SSR_pred_boot(A=site2.all.st.diff[,i], E=E, predstep=1, tau=1)$rho
+  for(i in names(site2.all.st)) {
+    Etest.st[E-1,i]<-SSR_pred_boot(A=site2.all.st[,i], E=E, predstep=1, tau=1)$rho
   }
 }
 
 ## Remove NA columns (species for which there was no variation (e.g. rare species, lots of zeros))
-Etest.diff <- Etest.diff[,colSums(is.na(Etest.diff)) == 0]
+Etest.st <- Etest.st[,colSums(is.na(Etest.st)) == 0]
 
 # Graph relationships between embedding dimension and rho
-Emelt.diff <- melt(Etest.diff,id.vars="E") # long form for plotting
-ggplot(Emelt.diff,aes(x=E,y=value)) +geom_line()+facet_wrap("variable")
+Emelt.st <- melt(Etest.st,id.vars="E") # long form for plotting
+ggplot(Emelt.st,aes(x=E,y=value)) +geom_line()+facet_wrap("variable")
 
 # find best E for each variable (maximum absolute value rho)
-bestE.diff <- data.frame(E=sapply(Etest.diff[2:length(Etest.diff)],function(x) Etest.diff$E[abs(x)==max(abs(x))]))
-bestE.diff$rho <- sapply(Etest.diff[2:length(Etest.diff)],function(x) x[abs(x)==max(abs(x))])
+bestE.st <- data.frame(E=sapply(Etest.st[2:length(Etest.st)],function(x) Etest.st$E[abs(x)==max(abs(x))]))
+bestE.st$rho <- sapply(Etest.st[2:length(Etest.st)],function(x) x[abs(x)==max(abs(x))])
 
 # Checks whether predictive ability of processes declines with increasing time distance
-signal_purp_check <- SSR_check_signal(A=site2.all.st.diff$purp,E=bestE.diff["purp","E"],predsteplist=1:18,matchSugi = 0)
+signal_purp_check <- SSR_check_signal(A=site2.all.st$purp,E=bestE["purp","E"],predsteplist=1:18,matchSugi = 0)
 plot(signal_purp_check$predatout,type="l",col="purple")
 
-signal_red_check <- SSR_check_signal(A=site2.all.st.diff$red,E=bestE.diff["red","E"],predsteplist=1:18,matchSugi = 0)
+signal_red_check <- SSR_check_signal(A=site2.all.st$red,E=bestE["red","E"],predsteplist=1:18,matchSugi = 0)
 plot(signal_red_check$predatout,type="l",col="red")
 
-signal_mac_check <- SSR_check_signal(A=site2.all.st.diff$mac,E=bestE.diff["mac","E"],predsteplist=1:18,matchSugi = 0)
+signal_mac_check <- SSR_check_signal(A=site2.all.st$mac,E=bestE["mac","E"],predsteplist=1:18,matchSugi = 0)
 plot(signal_mac_check$predatout,type="l",col="darkgreen")
 
-signal_cys_check <- SSR_check_signal(A=site2.all.st.diff$cys,E=bestE.diff["cys","E"],predsteplist=1:18,matchSugi = 0)
+signal_cys_check <- SSR_check_signal(A=site2.all.st$cys,E=bestE["cys","E"],predsteplist=1:18,matchSugi = 0)
+plot(signal_cys_check$predatout,type="l",col="orange")
+#******************************
+```
+
+The problem is still present here... what about first-differencing and then standardizing?
+
+```{r first diff and standard}
+#*********************
+site2.10L.diff <- as.data.frame(diff(data.matrix(site2.10L)))
+site2.10L.diff <- as.data.frame(diff(data.matrix(site2.22L)))
+site2.10L.diff <- as.data.frame(diff(data.matrix(site2.32R)))
+site2.10L.diff <- as.data.frame(diff(data.matrix(site2.39L)))
+site2.10L.diff <- as.data.frame(diff(data.matrix(site2.45L)))
+
+site2.10L.diff.st <- decostand(site2.10L.diff,method="standardize")
+site2.22L.diff.st <- decostand(site2.22L.diff,method="standardize")
+site2.32R.diff.st <- decostand(site2.32R.diff,method="standardize")
+site2.39L.diff.st <- decostand(site2.39L.diff,method="standardize")
+site2.45L.diff.st <- decostand(site2.45L.diff,method="standardize")
+
+### A quick look at what differencing and standardizing has done (this case to red urchin data)
+plot(site2.10L$red,type="l",col="red",xlab="period",ylab="density (raw or trans)",main="raw")
+plot(site2.10L.hel$red,type="l",col="red",xlab="period",ylab="density (raw or trans)",main="hellinger")
+plot(site2.10L.st$red,type="l",col="red",xlab="period",ylab="density (raw or trans)",main="standardized")
+plot(site2.10L.diff.st$red,type="l",col="red",xlab="period",ylab="density (raw or trans)",main="1st diff and stand")
+
+
+NA.row <- as.data.frame(rep(NA,length(site2.10L.diff.st))) ## NAs are for linking "spatially-replicated time series" for multispatial CCM, see package and text
+NA.row <- as.data.frame(t(NA.row))
+names(NA.row) <- names(site2.10L.diff.st)
+
+# Bind all swaths ("replicates") together to produce the final dataset for testing
+site2.all.diff.st <- bind_rows(site2.10L.diff.st,NA.row,site2.22L.diff.st,NA.row,site2.32R.diff.st,NA.row,site2.39L.diff.st,NA.row,site2.45L.diff.st)
+site2.all.diff.st <- as.data.frame(site2.all.diff.st)
+
+## Embedding dimension
+Etest.diff.st<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
+
+# For each variable/species' timeseries, loop over potential E values and 
+# calculate predictive ability rho of each process for its own dynamics
+for(E in 2:maxE) {
+#Uses defaults of looking forward one prediction step (predstep)
+#And using time lag intervals of one time step (tau)
+  for(i in names(site2.all.diff.st)) {
+    Etest.diff.st[E-1,i]<-SSR_pred_boot(A=site2.all.diff.st[,i], E=E, predstep=1, tau=1)$rho
+  }
+}
+
+## Remove NA columns (species for which there was no variation (e.g. rare species, lots of zeros))
+Etest.diff.st <- Etest.diff.st[,colSums(is.na(Etest.diff.st)) == 0]
+
+# Graph relationships between embedding dimension and rho
+Emelt.diff.st <- melt(Etest.diff.st,id.vars="E") # long form for plotting
+ggplot(Emelt.diff.st,aes(x=E,y=value)) +geom_line()+facet_wrap("variable")
+
+# find best E for each variable (maximum absolute value rho)
+bestE.diff.st <- data.frame(E=sapply(Etest.diff.st[2:length(Etest.diff.st)],function(x) Etest.diff.st$E[abs(x)==max(abs(x))]))
+bestE.diff.st$rho <- sapply(Etest.diff.st[2:length(Etest.diff.st)],function(x) x[abs(x)==max(abs(x))])
+
+# Checks whether predictive ability of processes declines with increasing time distance
+signal_purp_check <- SSR_check_signal(A=site2.all.diff.st$purp,E=bestE["purp","E"],predsteplist=1:18,matchSugi = 0)
+plot(signal_purp_check$predatout,type="l",col="purple")
+
+signal_red_check <- SSR_check_signal(A=site2.all.diff.st$red,E=bestE["red","E"],predsteplist=1:18,matchSugi = 0)
+plot(signal_red_check$predatout,type="l",col="red")
+
+signal_mac_check <- SSR_check_signal(A=site2.all.diff.st$mac,E=bestE["mac","E"],predsteplist=1:18,matchSugi = 0)
+plot(signal_mac_check$predatout,type="l",col="darkgreen")
+
+signal_cys_check <- SSR_check_signal(A=site2.all.diff.st$cys,E=bestE["cys","E"],predsteplist=1:18,matchSugi = 0)
 plot(signal_cys_check$predatout,type="l",col="orange")
 #******************************
 
+## This looks better! graphs of E vs. rho and predstep vs. L are much cleaner.  Let's proceed with this for now
 ```
 
 Do red and purple urchins drive each other at the West End?
@@ -216,16 +291,17 @@ Do red and purple urchins drive each other at the West End?
 #iterations is the number of bootsrap iterations (default 100)
 # Does red "cause" purp?
 
-# For both species' timeseries, best embedding dimension was 5
-E_urch <- 5
+# set embedding dimension based on previous analysis (choice: best balance of not too large and near the absolute best choice)
+E_red <- 9
+E_purp <- 4
 
 # Test for "red causing purple"
-CCM_boot_red<-CCM_boot(A=site2.all.hel$red, B=site2.all.hel$purp, E=5, tau=1, iterations=100)
+CCM_boot_red<-CCM_boot(A=site2.all.diff.st$red, B=site2.all.diff.st$purp, E=E_red, tau=1, iterations=100)
 # quick plot of result
 plot(CCM_boot_red$Lobs,CCM_boot_red$rho,type="l",col="red",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff")
 
 # Does purp "cause" red?
-CCM_boot_purp<-CCM_boot(A=site2.all.hel$purp, B=site2.all.hel$red, E=5, tau=1, iterations=100)
+CCM_boot_purp<-CCM_boot(A=site2.all.diff.st$purp, B=site2.all.diff.st$red, E=E_purp, tau=1, iterations=100)
 lines(CCM_boot_purp$Lobs,CCM_boot_purp$rho,type="l",col="purple")
 
 #Test for significant causal signal
@@ -238,67 +314,37 @@ CCM_boot_purp))
 Red urchins and macrocystis
 
 ```{r red and mac CCM}
+# Need to set 'optimal' E for macro
+E_mac=4
+
 # Test for "red causing mac"
-CCM_red_cause_mac<-CCM_boot(A=site2.all.hel$red, B=site2.all.hel$mac, E=5, tau=1, iterations=100)
+CCM_red_cause_mac<-CCM_boot(A=site2.all.diff.st$red, B=site2.all.diff.st$mac, E=E_red, tau=1, iterations=100)
 # quick plot of result
 plot(CCM_red_cause_mac$Lobs,CCM_red_cause_mac$rho,type="l",col="red",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff",ylim=c(0,0.7))
 
 # Does mac "cause" red?
-CCM_mac_cause_red<-CCM_boot(A=site2.all.hel$purp, B=site2.all.hel$red, E=5, tau=1, iterations=100)
+CCM_mac_cause_red<-CCM_boot(A=site2.all.diff.st$purp, B=site2.all.diff.st$red, E=E_mac, tau=1, iterations=100)
 lines(CCM_mac_cause_red$Lobs,CCM_mac_cause_red$rho,type="l",col="green")
 
 # in ggplot
-red.mac <- data.frame(L=CCM_mac_cause_red$Lobs,rho.1=CCM_red_cause_mac$rho,rho.2=CCM_mac_cause_red$rho,sd.1=CCM_red_cause_mac$sdevrho, sd.2=CCM_mac_cause_red$sdevrho)
-red.mac$upper.1 <- red.mac$rho.1+red.mac$sd.1
-red.mac$lower.1 <- red.mac$rho.1-red.mac$sd.1
-red.mac$upper.2 <- red.mac$rho.2+red.mac$sd.2
-red.mac$lower.2 <- red.mac$rho.2-red.mac$sd.2
+red.out <- data.frame(L=CCM_red_cause_mac$Lobs,rho.red=CCM_red_cause_mac$rho,sd.red=CCM_red_cause_mac$sdevrho)
+mac.out <- data.frame(L=CCM_mac_cause_red$Lobs,rho.mac=CCM_mac_cause_red$rho,sd.mac=CCM_mac_cause_red$sdevrho)
+red.mac <- left_join(mac.out,red.out)
+red.mac <- mutate(red.mac,upper.red=rho.red+sd.red,lower.red=rho.red-sd.red,upper.mac=rho.mac+sd.mac,lower.mac=rho.mac-sd.mac)
 
 cols <- c("Red causes mac"="red","Mac causes red"="green")
-ggplot(red.mac) + geom_ribbon(aes(x=L,ymin=lower.1,ymax=upper.1),fill="grey70")+
-  geom_ribbon(aes(x=L,ymin=lower.2,ymax=upper.2),fill="grey70")+
-  geom_line(aes(x=L,y=rho.1,col="Red causes mac")) +
-  geom_line(aes(x=L,y=rho.2,col="Mac causes red")) +
+ggplot(red.mac) + geom_ribbon(aes(x=L,ymin=lower.red,ymax=upper.red),fill="red",alpha=0.3)+
+  geom_ribbon(aes(x=L,ymin=lower.mac,ymax=upper.mac),fill="green",alpha=0.3)+
+  geom_line(aes(x=L,y=rho.red,col="Red causes mac")) +
+  geom_line(aes(x=L,y=rho.mac,col="Mac causes red")) +
   labs(title="CCM, Red Urchins and Macrocystis, Site 2",x="Library length (L)",y="Pearson correlation coefficient +/- 1 SD")+
   scale_color_manual(values=cols)
-  
 
-#Test for significant causal signal
-#See R function for details
 (CCM_significance_test<-ccmtest(CCM_red_cause_mac,
 CCM_mac_cause_red))
-
-### with first-differenced, standardized data
-# Test for "red causing mac" (E=13 from previous analysis)
-CCM_red_cause_mac<-CCM_boot(A=site2.all.st.diff$red, B=site2.all.st.diff$mac, E=13, tau=1, iterations=100)
-# quick plot of result
-plot(CCM_red_cause_mac$Lobs,CCM_red_cause_mac$rho,type="l",col="red",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff",ylim=c(0,0.7))
-
-# Does mac "cause" red? (E=4)
-CCM_mac_cause_red<-CCM_boot(A=site2.all.st.diff$purp, B=site2.all.st.diff$red, E=4, tau=1, iterations=100)
-lines(CCM_mac_cause_red$Lobs,CCM_mac_cause_red$rho,type="l",col="green")
-
-# in ggplot
-red.mac <- data.frame(L1=CCM_red_cause_mac$Lobs,L2=CCM_mac_cause_red$Lobs,rho.1=CCM_red_cause_mac$rho,rho.2=CCM_mac_cause_red$rho,sd.1=CCM_red_cause_mac$sdevrho, sd.2=CCM_mac_cause_red$sdevrho)
-red.mac$upper.1 <- red.mac$rho.1+red.mac$sd.1
-red.mac$lower.1 <- red.mac$rho.1-red.mac$sd.1
-red.mac$upper.2 <- red.mac$rho.2+red.mac$sd.2
-red.mac$lower.2 <- red.mac$rho.2-red.mac$sd.2
-
-cols <- c("Red causes mac"="red","Mac causes red"="green")
-ggplot(red.mac) + geom_ribbon(aes(x=L,ymin=lower.1,ymax=upper.1),fill="grey70")+
-  geom_ribbon(aes(x=L,ymin=lower.2,ymax=upper.2),fill="grey70")+
-  geom_line(aes(x=L,y=rho.1,col="Red causes mac")) +
-  geom_line(aes(x=L,y=rho.2,col="Mac causes red")) +
-  labs(title="CCM, Red Urchins and Macrocystis, Site 2",x="Library length (L)",y="Pearson correlation coefficient +/- 1 SD")+
-  scale_color_manual(values=cols)
   
-
-#Test for significant causal signal
-#See R function for details
-(CCM_significance_test<-ccmtest(CCM_red_cause_mac,
-CCM_mac_cause_red))
-
-## FAILLLLLL
 ```
 
+We see a very strong signal!
+
+Generic function for CCM plot and numeric output, given a dataset and 2 variables of interest
