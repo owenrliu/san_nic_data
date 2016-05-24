@@ -1313,14 +1313,59 @@ CA.ggplot <- function(site.dat, scaling=1,choices=c(1,2)) { #inputs are a site's
     geom_text(data=sit.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(sit.sc[3]))),col="blue") +
     geom_hline(yintercept=0,linetype=2)+ geom_vline(xintercept=0,linetype=2)
   
-  return(site.ca.p)
+  return(list(plot=site.ca.p,CA=site.ca))
 }
 
 # Remove seasonal variation by looking at odd periods (fall) and even periods (spring) separately
 # Can add ellipses from our clustering result from before
 sitegroups <- data.frame(sites=as.integer(names(cutg)),groups=cutg)
 
-CA.ggplot(site2) + ggtitle("Correspondence Analysis, West End (Site 2)")
+CA.ggplot(site2)$plot + ggtitle("Correspondence Analysis, West End (Site 2)")
+
+```
+
+PCA with transformation and graphical output
+
+```{r PCA function for benthic data}
+compute_PCA <- function(site.dat, scaling=1,choices=c(1,2)) { #inputs are a site's dataset, and scaling 1 (default) or 2
+  
+  # Transform the data.  Since data is all in density (individuals per m2), we want to apply a Hellinger transform to the rows, but don't need to scale the columns. As a reminder, hellinger transform divides by total site (row) abundance, then square roots.
+  
+  site.hel <- decostand(site.dat,"hellinger")
+  
+  # Compute PCA
+  site.pca <- vegan::rda(site.hel)
+  
+  # Extract scores for plotting
+  sit.sc <- as.data.frame(scores(site.pca,choices=choices,display="wa",scaling=scaling))
+  sit.sc["period"]<-row.names(sit.sc)
+  spe.ca.sc <- as.data.frame(scores(site.pca,choices=choices,display="sp",scaling=scaling))
+  spe.ca.sc["species"]<-as.numeric(row.names(spe.ca.sc))
+  
+  # Adding species names for easier interpretation
+  spe.ca.sc["spename"]<-left_join(spe.ca.sc,spp.key[spp.key$DataSet=="Benthic density",],by=c("species"="SpeciesCode"))$SpeciesName
+  
+  axes.names <- names(sit.sc)
+  
+  # The plot
+  site.pca.p <-ggplot(spe.ca.sc) +
+    geom_text(data=spe.ca.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(spe.ca.sc[4]))),family="serif",col="red",size=3)+
+    geom_text(data=sit.sc,aes_(x=as.name(axes.names[1]),y=as.name(axes.names[2]),label=as.name(names(sit.sc[3]))),col="blue") +
+    geom_hline(yintercept=0,linetype=2)+ geom_vline(xintercept=0,linetype=2)
+  
+  return(list(plot=site.pca.p,PCA=site.pca))
+}
+compute_PCA(site2,scaling=1)$plot
+compute_PCA(site2,scaling=2)$plot
+site2.pca <- compute_PCA(site2,scaling=2)$PCA
+
+# raw PC1, PC2 over time
+plot(as.numeric(row.names(site2)),site2.pca$CA$u[,1],type="l")
+lines(as.numeric(row.names(site2)),site2.pca$CA$u[,2],col="red",lty=2)
+
+# scaled by eigenvalues
+plot(as.numeric(row.names(site2)),scores(site2.pca,display="sites",scaling=1)[,1],type="l")
+lines(as.numeric(row.names(site2)),scores(site2.pca,display="sites",scaling=1)[,2],col="red",lty=2)
 
 ```
 
@@ -1337,6 +1382,7 @@ ott.state.bin <- ott.state.bin[,c("period","29_2","29_3","29_7","589_2","589_3",
 ott.counts.west <- c(rep(0,27),rep(10,3),9,rep(13,4),18,rep(20,3),24,22,20,20,30,29,29,29,29,31,31,18,30,34,42)
 ott.counts.north <- c(rep(0,27),rep(4,3),5,rep(1,8),0,1,rep(0,7),1,1,0,1,4,0)
 ott.counts.south <- c(rep(0,30),3,rep(0,4),2,rep(0,3),3,6,13,13,2,2,2,2,2,5,5,19,2,8,6)
+ott.abun.key <- data.frame(period=sort(unique(benthdens.dat$Period)),west=ott.counts.west,north=ott.counts.north,south=ott.counts.south)
 ott.state.bin$ott.count.west <- ott.counts.west
 ott.state.bin$ott.count.north <- ott.counts.north
 ott.state.bin$ott.count.south <- ott.counts.south
@@ -1473,6 +1519,56 @@ site2.hel.mvpart.ott <- mvpart(data.matrix(site2.inverts.hel)~., site2.expl,cp=0
 # In this version of species transformation, it suggests a STRONG impact of just the "otter effect" (fewer or more than 19 otters), with little effect of other variables after that on error (although 8 groups works)
 
 # So far, this analysis really supports the idea of otters as a primary force, as the 19 otters split has come up in every analysis. Let's keep investigating!
+
+## What about for other sites (with fewer otters?)
+## Let's try site 1 (Nav Fac, north side of the island)
+#*********************************************************
+site1.inverts <- site1[,1:12] # invert columns
+names(site1.inverts) <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc") # rename variables
+site1.inverts.norm <- decostand(site1.inverts,method="normalize") # Euclidean norm (chord) transformation (MRT is a euclidean procedure)
+# explanatory variables: algaes, period(time), and otter counts. No normalization of these variables. keeping period as a separate
+# dataframe/vector, because it is dominant
+site1.expl <- site1[,13:19]
+site1.period <- data.frame(period=as.numeric(row.names(site1.expl)))
+site1.expl$ott <- ott.abun.key[,"north"][match(row.names(site1),ott.abun.key$period)]
+names(site1.expl) <- c("cys","lam","ymac","youn","eis","pter","mac","ott")
+
+# The MRT procedure
+# ************************
+# Just based on time
+site1.mvpart.per <- mvpart(data.matrix(site1.inverts.norm)~., site1.period,cp=0,margin=0.08,xv="pick",xvmult=100,legend=F)
+
+## What about constrained by algae and otters?
+site1.mvpart.ott <- mvpart(data.matrix(site1.inverts.norm)~., site1.expl,cp=0,margin=0.08,xv="pick",xvmult=500,legend=F)
+
+# Time and all others combined
+site1.mvpart.all <- mvpart(data.matrix(site1.inverts.norm)~., cbind(site1.expl,site1.period),cp=0,margin=0.08,xv="pick",xvmult=500,legend=F)
+
+
+### ... and a southern site (site 4, Dutch Harbor)
+#*********************************************************
+site4.inverts <- site4[,1:12] # invert columns
+names(site4.inverts) <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc") # rename variables
+site4.inverts.norm <- decostand(site4.inverts,method="normalize") # Euclidean norm (chord) transformation (MRT is a euclidean procedure)
+# explanatory variables: algaes, period(time), and otter counts. No normalization of these variables. keeping period as a separate
+# dataframe/vector, because it is dominant
+site4.expl <- site4[,13:19]
+site4.period <- data.frame(period=as.numeric(row.names(site4.expl)))
+site4.expl$ott <- ott.abun.key[,"north"][match(row.names(site4),ott.abun.key$period)]
+names(site4.expl) <- c("cys","lam","ymac","youn","eis","pter","mac","ott")
+
+# The MRT procedure
+# ************************
+# Just based on time
+site4.mvpart.per <- mvpart(data.matrix(site4.inverts.norm)~., site4.period,cp=0,margin=0.08,xv="pick",xvmult=100,legend=F)
+
+## What about constrained by algae and otters?
+site4.mvpart.ott <- mvpart(data.matrix(site4.inverts.norm)~., site4.expl,cp=0,margin=0.08,xv="pick",xvmult=500,legend=F)
+
+# Time and all others combined
+site4.mvpart.all <- mvpart(data.matrix(site4.inverts.norm)~., cbind(site4.expl,site4.period),cp=0,margin=0.08,xv="pick",xvmult=500,legend=F)
+### TONS of error here; doesn't seem like the data group well!  Maybe not enough variation (stationary)
+
 ```
 
 ### LDA of chronological grouping with environmental variables
@@ -1633,5 +1729,36 @@ Fish data predicted by benthic data??
 
 ```{r constrained clustering benth and fish}
 # We'll do a redundancy analysis of fish
+
+```
+
+### Adding an environmental signal-- what about El Nino?
+
+```{r el nino}
+en <- read.csv(file=paste0(W_D,"/data/elnino_sst.csv"))
+en.melt<-melt(en,id.vars="Year")%>%arrange(Year,variable)%>%mutate(month = as.numeric(variable))
+en.ts <- ts(en.melt$value,start=c(1979),frequency = 12)
+plot(en.ts,main="El Nino Index, SST Anomaly 3 month running average",xlab="Year",ylab="SST Anomaly")
+abline(h=0,lty=2)
+
+## Have to match periods in the benthic data to El Nino values
+en.per.match <- data.frame(period=1:63,date=NA,ssta=NA)
+# find first date in the benthic dataset corresponding to each period
+en.per.match$date <- benthdens.dat$Date[match(1:63,benthdens.dat$Period)]
+# pull years and months from the date, and join el nino indices for those year/months
+require(lubridate)
+en.per.match$year <- year(en.per.match$date)
+en.per.match$month <- month(en.per.match$date)
+en.per.match$ssta <- left_join(en.per.match,en.melt,by=c("year"="Year","month"="month"))$value
+
+# now we have El Nino index matched to periods from the surveys, like so:
+ggplot(en.per.match,aes(x=period,y=ssta))+geom_line()+
+  xlab("Period")+ylab("SST anomaly")+ggtitle("Oceanic Nino Index over SNI Survey Periods")+
+  geom_hline(yintercept=0,linetype=2)
+
+## save the El Nino match for later
+write.csv(en.per.match,file=paste0(W_D,"/data/el_nino_period_match.csv"),row.names=F)
+# and in case we need just the "complete" periods (minus the no-survey years)
+en.match.comp <- filter(en.per.match,!is.na(date))
 
 ```

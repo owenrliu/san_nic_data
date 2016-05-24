@@ -1,0 +1,146 @@
+---
+title: "Fishing_Data"
+author: "Owen Liu"
+date: "April 28, 2016"
+output: html_document
+---
+
+San Nicolas Island, and the mainland, have been fished for red urchin for a long time.  I want to look for evidence of sea otter effects at SNI .  The relevant fishing blocks are 813 (SNI East Side) and 814 (SNI West Side).  Interestingly, anecdotally, the sea otters that were translocated and established a population on SNI only occupy the west side of the island.  Hence, the hypothesis is that we should be able to see a difference in effects on urchins (otters' preferred prey) from one side of the island to the other.
+
+Otter populations have looked like this at SNI:
+```{r otter population, echo=FALSE}
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+WD <- getwd()
+ott <- read.csv(file=paste(WD,"/data/Table2_independent_sea_otters.csv",sep=""))
+ott$Date<-as.Date(ott$Date,format="%m/%d/%Y")
+plot(ott$Date,ott$West, main="Independent Sea Otters Observed at SNI",xlab="Year",ylab="Number of Otters",type="l",col="darkgreen",
+     ylim=c(0,50),lwd=2)
+lines(ott$Date,rowSums(cbind(ott$North,ott$South)),col="red",lwd=2)
+legend("topleft",col=c("darkgreen","red"),legend=c("West","North and South"),lty=1)
+```
+
+We can look at the fishing data as well.  For now, I am using data from an old NCEAS project by Carrie Kappel.
+
+```{r fisheries data import, echo=FALSE}
+# Dataframes to store catches from blocks 813 and 814
+bl813 <- data.frame(year=1969:2006,red=0,lobster=0)
+bl814 <- data.frame(year=1969:2006,red=0,lobster=0)
+
+for(i in 1969:2006) {
+  file <- paste0(i,"_dat.csv") #file name
+  datname <- paste0("dat",i) # name for R variable
+  inp <- read.csv(file=paste0(WD,"/data/",file)) # import the .csv
+  
+  if(class(inp$Block)=="factor") inp$Block <- as.integer(as.character(inp$Block)) # Fix broken variable type in some of the data
+  inp <- inp[!is.na(inp$Block),] # remove rows with no block number
+  
+  assign(datname,inp) # store data in a dataframe in R
+  
+  # If there is data for red urchin catch in that year, pull it out and assign it to the block 813 and 814 dataframes created above
+  bl813dat.urch <- NA
+  bl814dat.urch<- NA
+  bl813dat.lob <- NA
+  bl814dat.lob <- NA
+  
+  
+  if("Urchin..red" %in% names(inp)) {
+    bl813dat.urch<- inp[inp$Block==813,"Urchin..red"] # pull out red urchin data from block 813
+    bl814dat.urch<- inp[inp$Block==814,"Urchin..red"] # pull out red urchin data from block 814
+  }
+  if("Lobster..California.spiny" %in% names(inp)) {
+    bl813dat.lob<- inp[inp$Block==813,"Lobster..California.spiny"] # pull out lobster data from block 813
+    bl814dat.lob<- inp[inp$Block==814,"Lobster..California.spiny"] # pull out lobster data from block 814
+  }
+  
+  bl813[bl813$year==i,"red"] <- bl813dat.urch
+  bl814[bl814$year==i,"red"] <- bl814dat.urch
+  bl813[bl813$year==i,"lobster"] <- bl813dat.lob
+  bl814[bl814$year==i,"lobster"] <- bl814dat.lob
+}
+bl813$red<-bl813$red/2204.62 # convert to metric tons
+bl814$red<-bl814$red/2204.62 # convert to metric tons
+bl813$lobster<-bl813$lobster/1000 # convert to thousand pounds
+bl814$lobster<-bl814$lobster/1000 # convert to thousand pounds
+
+```
+
+Now, our two vectors bl813 and bl814 have the reported catch data for blocks 813 and 814 over the time-series
+We can graph them to see what they look like over time
+
+```{r block catch graphs}
+require(ggplot2)
+cols <- c("813, No Otters"="blue","814, Otters"="red")
+ggplot()+geom_line(aes(x=year,y=red,color="813, No Otters"),data=bl813)+
+  geom_line(aes(x=year,y=red,color="814, Otters"),data=bl814)+
+  ggtitle("Red Urchin Catch Over Time, Fishing Blocks 813 and 814") +xlab("Year") +
+  ylab("Urchin Catch (metric tons)")+scale_color_manual(name="Fishing Block",values=cols)
+
+ggplot()+
+  geom_line(aes(x=year,y=lobster,color="813, No Otters"),data=bl813)+
+  geom_line(aes(x=year,y=lobster,color="814, Otters"),data=bl814)+
+  ggtitle("Spiny Lobster Catch Over Time, Fishing Blocks 813 and 814") +xlab("Year") +
+  ylab("Lobster Catch (thousand pounds)")+
+  scale_color_manual(name="Fishing Block",values=cols)
+
+```
+
+Urchin data from Sarah Teck
+```{r teck data import}
+for(i in seq(1978,2010,by=2)) {
+  file <- paste0(i,"_landings.csv") #file name
+  datname <- paste0("land",i) # name for R variable
+  inp <- read.csv(file=paste0(WD,"/data/teck urchin data/",file)) # import the .csv
+  
+  # fix a few variable names
+  names(inp)[1] <- "serial"
+  names(inp)[11:12] <- c("land.month","land.day")
+  
+  assign(datname,inp) # store data in a dataframe in R
+}
+
+# 2011 data is a slightly different format (different variable names)
+land2011 <- read.csv(file=paste0(WD,"/data/teck urchin data/2011_landings.csv"))
+land2011 <- land2011[,-c(7,10,12:14,16)] # remove unmatched columns
+names(land2011) <- names(land1978) # change variable names to match other data
+
+# Join all the data into a master
+landings.all <- bind_rows(land1978,land1980,land1982,land1984,land1986,land1988,land1990,land1992,land1994,land1996,land1998,
+                          land2000,land2002,land2004,land2006,land2008,land2010,land2011)
+head(landings.all)
+```
+
+Group total landings by year, month, and origin of catch
+
+```{r grouping urchin data}
+# Landings, converted to metric tons, by origin block, year, and month
+land.by.month <- landings.all %>% group_by(origin.code,landing.year,land.month) %>% ddply(~origin.code+landing.year+land.month,summarise,catch.mt=sum(reported.catch.lbs)/2204.62)
+
+# Landings, converted to metric tons, by origin block and year
+land.by.year <- landings.all %>% group_by(origin.code,landing.year) %>% ddply(~origin.code+landing.year,summarise,catch.mt=sum(reported.catch.lbs)/2204.62)
+
+# just block 813
+land.813 <- subset(land.by.year,land.by.year$origin.code==813)
+land.814 <- subset(land.by.year,land.by.year$origin.code==814)
+
+# and a quick look at the data
+cols <- c("813, No Otters"="blue","814, Otters"="red")
+ggplot() +geom_line(data=land.813,aes(x=landing.year,y=catch.mt,col="813, No Otters"))+
+  geom_line(data=land.814,aes(x=landing.year,y=catch.mt,col="814, Otters"))+
+  xlab("Year")+
+  ylab("Catch (MT)") +
+  ggtitle("Urchin Catch Over Time, Blocks 813 and 814") +
+  scale_color_manual(name="Fishing Block",values=cols)
+
+plot.block <- function(block) {
+  block.dat<-subset(land.by.year,land.by.year$origin.code==block)
+  ggplot() +geom_line(data=block.dat,aes(x=landing.year,y=catch.mt))+
+  xlab("Year")+
+  ylab("Catch (MT)") +
+  ggtitle("Urchin Catch Over Time")
+}
+
+```

@@ -1,0 +1,125 @@
+---
+title: "otters_spatial_food"
+author: "Owen Liu"
+date: "May 23, 2016"
+output: html_document
+---
+
+### Does otter population decline with spatial food availability?
+Investigating otter decline and availability of prey
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(reshape2)
+library(vegan)
+library(rgdal)
+library(multispatialCCM)
+
+#### Data ####
+#note: all raw data has a .dat
+W_D <- getwd()
+
+# benthic species density
+#**************************************
+benthdens.dat <- read.csv(file=paste(W_D,'/data/Benthic density raw data.csv',sep=''))
+#fix dates in the datasets to be more readable by R
+betterDates <-function(dat) {
+  dates<-as.Date(as.character(dat$Date),format="%m/%d/%y")
+  return(dates)
+}
+benthdens.dat$Date <- betterDates(benthdens.dat)
+#**************************************
+
+## Broken down by site and swath and first-differenced
+# **************************
+sites.swaths <- aggregate(list(dens=benthdens.dat$Density),by=list(station=benthdens.dat$Station,period=benthdens.dat$Period,swath=benthdens.dat$Swath,species=benthdens.dat$SpeciesCode), FUN=mean)
+
+sit.names <- unique(sites.swaths$station)
+
+for(i in sit.names) {
+  dat.t <- subset(sites.swaths,sites.swaths$station==i) #subset of 'master' (long form) for a given site
+  for(j in unique(dat.t$swath)) {
+    dat.t.swath <- subset(dat.t,dat.t$swath==j)
+    dat.t.swath <- acast(dat.t.swath,period~species,value.var="dens") # cast to matrix
+    dat.t.swath <- as.data.frame((dat.t.swath))
+    names(dat.t.swath) <- spp.key.bdens$name
+    datname <- paste0("site",i,".",j)
+    assign(datname,dat.t.swath) # assign raw data to variable name with site and swath (e.g. "site1.10L")
+    
+    # first differences (for detrending)
+    dat.t.diff <- diff(data.matrix(dat.t.swath))
+    dat.t.diff <- as.data.frame(dat.t.diff)
+    datname <- paste0("site",i,".",j,".diff")
+    assign(datname,dat.t.diff) # assign raw data to variable name with site and swath (e.g. "site1.10L")
+  }
+}
+#*************************************
+
+# Species Key
+#*************************************
+spp.key <- read.csv(file=paste(W_D,'/data/Table4_Species_sampled.csv',sep='')) # All species, all surveys
+spp.key.bdens <- spp.key[spp.key$DataSet=="Benthic density",] # just benthic density surveys
+# better names
+spp.key.bdens$name <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc","cys","lam","ymac","youn","eis","pter","mac")
+#**************************************
+
+# Function for pulling out data from master dataset for one species and a given number of sites
+#**********************************
+benthdens.spp.viz <- function (spp,sites=1:7) {
+
+  spp.dat <- subset(benthdens.dat,benthdens.dat$SpeciesCode==spp & benthdens.dat$Station %in% sites)
+  #subset for the given species, broken down by site
+  timeseries <- aggregate(list(Density=spp.dat$Density), by=list(Date=spp.dat$Date,Site=spp.dat$Station),FUN=mean)
+  
+  # aggregated across sites
+  tot <- aggregate(list(Density=spp.dat$Density), by=list(Period=spp.dat$Period),FUN=mean)
+  timeseries$Site <- as.factor(timeseries$Site)
+  
+  # disaggregated and aggregated plots
+  spp.plot <- ggplot(timeseries,aes(x=Date,y=Density,group=Site,color=Site)) + geom_line() + xlab("Year")+ylab("Density (ind./m2)")
+  totplot <- ggplot(tot,aes(x=Period,y=Density)) + geom_line()
+  
+  #Returns total density (for subset of sites) by period, a timeseries plot broken up by site, and a plot of total mean density across sites
+  return(list(tot=tot,tseries=timeseries,plot=spp.plot,totplot=totplot))
+}
+#***************************
+
+# Otter data
+#***********************************
+ott <- read.csv(file=paste(W_D,"/data/Table2_independent_sea_otters.csv",sep=""))
+ott$Date<-as.Date(ott$Date,format="%m/%d/%Y")
+# Have to manually match otter counts to periods in the benthic data, and assume population statis between periods when otters weren't counted
+ott.counts.west <- c(rep(0,29),rep(10,3),9,rep(13,4),18,18,rep(20,3),24,22,20,20,30,29,29,29,29,31,31,18,18,30,34,42)
+ott.counts.north <- c(rep(0,29),rep(4,3),5,rep(1,9),0,1,rep(0,7),1,1,0,0,1,4,0)
+ott.counts.south <- c(rep(0,32),3,rep(0,4),2,2,rep(0,3),3,6,13,13,2,2,2,2,2,5,5,19,19,2,8,6)
+ott.abun.key <- data.frame(period=sort(unique(benthdens.dat$Period)),west=ott.counts.west,north=ott.counts.north,south=ott.counts.south)
+ott.abun.key$tot <- rowSums(ott.abun.key[2:4])
+ott.abun.melt <- melt(ott.abun.key,id.vars=c("period"))
+
+### sortsum: do we need this?
+sortsum <- function(x) sum(sort(x)/max(x))
+```
+
+
+This is what we're trying to explain:
+
+```{r otter abun over space over time}
+# otter counts, by region and total
+ggplot(ott.abun.melt,aes(x=period,y=value,col=variable)) + geom_line() +ggtitle("Otter Counts Over Time") + xlab("Period") +
+  ylab("Number of Otters")
+# "prey availability"
+westend.reds <- benthdens.spp.viz(29,sites=c(2,3,7))$tot
+ggplot(westend.reds,aes(x=Period,y=Density)) +
+  geom_line()+
+  labs(title="Red Urchins on the West End",x="Period",y="Density, ind./sq. m")
+# cor?
+westend.reds <- left_join(westend.reds,ott.abun.key,by=c("Period"="period"))
+cor(westend.reds$Density[-(1:27)],westend.reds$tot[-(1:27)])
+ggplot(westend.reds[-(1:27),],aes(x=Density,y=tot))+geom_point()+ggtitle("Red Urchin Density vs. Otter Population")+xlab("Urchin Density")+ylab("Otter population")
+
+westend.wavy <- benthdens.spp.viz(66,sites=c(2,3,7))$tot
+westend.purp <- benthdens.spp.viz(30,sites=c(2,3,7))$tot
+plot(westend.purp,type="l")
+```
