@@ -5,6 +5,9 @@ date: "March 29, 2016"
 output: html_document
 ---
 
+### Update 5.31.2016: This file has gotten really long, and therefore from now on I am splitting some of these analyses into other files/pieces of code in this project.  Hence there will be some overlap and redundancy.
+
+
 ```{r data and required packages, echo=F}
 library(ggplot2)
 library(dplyr)
@@ -1758,6 +1761,11 @@ ggplot(en.per.match,aes(x=period,y=ssta))+geom_line()+
 
 ## save the El Nino match for later
 write.csv(en.per.match,file=paste0(W_D,"/data/el_nino_period_match.csv"),row.names=F)
+
+## full key (for comparison with other datasets, too)
+enso.full <- en.per.match
+en.per.match
+
 # and in case we need just the "complete" periods (minus the no-survey years)
 en.match.comp <- filter(en.per.match,!is.na(date))
 

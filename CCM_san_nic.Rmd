@@ -14,6 +14,7 @@ library(reshape2)
 library(vegan)
 library(rgdal)
 library(multispatialCCM)
+library(tseries)
 
 #### Data ####
 #note: all raw data has a .dat
@@ -304,6 +305,20 @@ plot(CCM_boot_red$Lobs,CCM_boot_red$rho,type="l",col="red",main="Library length 
 CCM_boot_purp<-CCM_boot(A=site2.all.diff.st$purp, B=site2.all.diff.st$red, E=E_purp, tau=1, iterations=100)
 lines(CCM_boot_purp$Lobs,CCM_boot_purp$rho,type="l",col="purple")
 
+# in ggplot
+red.out <- data.frame(L=CCM_boot_red$Lobs,rho.red=CCM_boot_red$rho,sd.red=CCM_boot_red$sdevrho)
+purp.out <- data.frame(L=CCM_boot_purp$Lobs,rho.purp=CCM_boot_purp$rho,sd.purp=CCM_boot_purp$sdevrho)
+red.purp <- inner_join(purp.out,red.out)
+red.purp <- mutate(red.purp,upper.red=rho.red+sd.red,lower.red=rho.red-sd.red,upper.purp=rho.purp+sd.purp,lower.purp=rho.purp-sd.purp,Lcum=rank(L))
+
+cols <- c("red causes purp"="red","purp causes red"="green")
+ggplot(red.purp) + geom_ribbon(aes(x=Lcum,ymin=lower.red,ymax=upper.red),fill="red",alpha=0.3)+
+  geom_ribbon(aes(x=Lcum,ymin=lower.purp,ymax=upper.purp),fill="green",alpha=0.3)+
+  geom_line(aes(x=Lcum,y=rho.red,col="red causes purp")) +
+  geom_line(aes(x=Lcum,y=rho.purp,col="purp causes red")) +
+  labs(title="CCM, Red Urchins and Purple Urchins, Site 2",x="Library length (L)",y="Pearson correlation coefficient +/- 1 SD")+
+  scale_color_manual(name="Process",values=cols)+theme_minimal()
+
 #Test for significant causal signal
 #See R function for details
 (CCM_significance_test<-ccmtest(CCM_boot_red,
@@ -329,16 +344,16 @@ lines(CCM_mac_cause_red$Lobs,CCM_mac_cause_red$rho,type="l",col="green")
 # in ggplot
 red.out <- data.frame(L=CCM_red_cause_mac$Lobs,rho.red=CCM_red_cause_mac$rho,sd.red=CCM_red_cause_mac$sdevrho)
 mac.out <- data.frame(L=CCM_mac_cause_red$Lobs,rho.mac=CCM_mac_cause_red$rho,sd.mac=CCM_mac_cause_red$sdevrho)
-red.mac <- left_join(mac.out,red.out)
-red.mac <- mutate(red.mac,upper.red=rho.red+sd.red,lower.red=rho.red-sd.red,upper.mac=rho.mac+sd.mac,lower.mac=rho.mac-sd.mac)
+red.mac <- inner_join(mac.out,red.out)
+red.mac <- mutate(red.mac,upper.red=rho.red+sd.red,lower.red=rho.red-sd.red,upper.mac=rho.mac+sd.mac,lower.mac=rho.mac-sd.mac,Lcum=rank(L))
 
 cols <- c("Red causes mac"="red","Mac causes red"="green")
-ggplot(red.mac) + geom_ribbon(aes(x=L,ymin=lower.red,ymax=upper.red),fill="red",alpha=0.3)+
-  geom_ribbon(aes(x=L,ymin=lower.mac,ymax=upper.mac),fill="green",alpha=0.3)+
-  geom_line(aes(x=L,y=rho.red,col="Red causes mac")) +
-  geom_line(aes(x=L,y=rho.mac,col="Mac causes red")) +
+ggplot(red.mac) + geom_ribbon(aes(x=Lcum,ymin=lower.red,ymax=upper.red),fill="red",alpha=0.3)+
+  geom_ribbon(aes(x=Lcum,ymin=lower.mac,ymax=upper.mac),fill="green",alpha=0.3)+
+  geom_line(aes(x=Lcum,y=rho.red,col="Red causes mac")) +
+  geom_line(aes(x=Lcum,y=rho.mac,col="Mac causes red")) +
   labs(title="CCM, Red Urchins and Macrocystis, Site 2",x="Library length (L)",y="Pearson correlation coefficient +/- 1 SD")+
-  scale_color_manual(values=cols)
+  scale_color_manual(name="Process",values=cols)+theme_minimal()
 
 (CCM_significance_test<-ccmtest(CCM_red_cause_mac,
 CCM_mac_cause_red))
@@ -347,4 +362,21 @@ CCM_mac_cause_red))
 
 We see a very strong signal!
 
-Generic function for CCM plot and numeric output, given a dataset and 2 variables of interest
+mean-variance
+
+```{r mean var}
+mean.var.spe <- benthdens.dat %>% group_by(Station,Period,SpeciesCode) %>% summarise(mean=mean(Density),var=var(Density))
+
+normalize <- function(x) ifelse(x>0,x/sqrt(sum(x^2)),0)
+hellinger <- function(x) ifelse(x>0,sqrt(x/sum(x)),0)
+verify <- function(x) as.numeric(sqrt(x%*%x))
+
+mean.var.chd.hel <- benthdens.dat %>% group_by(Station,Period,Swath) %>% mutate(chord=normalize(Density),hel=hellinger(Density))%>% group_by(Station,Period,SpeciesCode)%>%summarise(mean.ch=mean(chord),var.ch=var(chord),mean.hel=mean(hel),var.hel=var(hel))
+ggplot(mean.var.spe,aes(x=mean,y=var,col=factor(Station))) + geom_point() + scale_x_log10()+scale_y_log10()
+ggplot(mean.var.chd.hel,aes(x=mean.ch,y=var.ch,col=factor(Station))) + geom_point()
+ggplot(mean.var.chd.hel,aes(x=mean.hel,y=var.hel,col=factor(Station))) + geom_point()
+
+normalize <- function(x) ifelse(x>0,x/sqrt(sum(x^2)),0)
+hellinger <- function(x) ifelse(x>0,sqrt(x/sum(x)),0)
+verify <- function(x) as.numeric(sqrt(x%*%x))
+```

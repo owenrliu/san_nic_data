@@ -1,0 +1,140 @@
+---
+title: "El Nino and CCM"
+author: "Owen Liu"
+date: "May 31, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(reshape2)
+library(vegan)
+library(rgdal)
+library(multispatialCCM)
+library(tseries)
+library(lubridate)
+
+#### Data ####
+#note: all raw data has a .dat
+W_D <- getwd()
+
+# benthic species density
+#**************************************
+benthdens.dat <- read.csv(file=paste(W_D,'/data/Benthic density raw data.csv',sep=''))
+#fix dates in the datasets to be more readable by R
+betterDates <-function(dat) {
+  dates<-as.Date(as.character(dat$Date),format="%m/%d/%y")
+  return(dates)
+}
+benthdens.dat$Date <- betterDates(benthdens.dat)
+#**************************************
+
+# benthic species cover
+#**************************************
+benthcover.dat <- read.csv(file=paste(W_D,'/data/Benthic cover raw data.csv',sep=''))
+#fix dates in the datasets to be more readable by R
+benthcover.dat$Date <- betterDates(benthcover.dat)
+#**************************************
+
+# benthic fish density
+# *************************************
+fishdens.dat <- read.csv(file=paste(W_D,'/data/Benthic fish density raw data.csv',sep=''))
+#fix dates in the datasets to be more readable by R
+fishdens.dat$Date <- betterDates(fishdens.dat)
+# *************************************
+
+# midwater fish density
+# *************************************
+midwaterfish.dat <-  read.csv(file=paste(W_D,'/data/Midwater fish density raw data.csv',sep=''))
+#fix dates in the datasets to be more readable by R
+midwaterfish.dat$Date <- betterDates(midwaterfish.dat)
+# *************************************
+
+# Species Key
+#*************************************
+spp.key.full <- read.csv(file=paste(W_D,'/data/Table4_Species_sampled.csv',sep='')) # All species, all surveys
+spp.key.bdens <- spp.key.full[spp.key.full$DataSet=="Benthic density",] # just benthic density surveys
+# better names
+spp.key.bdens$name <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc","cys","lam","ymac","youn","eis","pter","mac")
+#**************************************
+
+# Otter data
+#***********************************
+ott <- read.csv(file=paste(W_D,"/data/Table2_independent_sea_otters.csv",sep=""))
+ott$Date<-as.Date(ott$Date,format="%m/%d/%Y")
+# Have to manually match otter counts to periods in the benthic data, and assume population statis between periods when otters weren't counted
+ott.counts.west <- c(rep(0,29),rep(10,3),9,rep(13,4),18,18,rep(20,3),24,22,20,20,30,29,29,29,29,31,31,18,18,30,34,42)
+ott.counts.north <- c(rep(0,29),rep(4,3),5,rep(1,9),0,1,rep(0,7),1,1,0,0,1,4,0)
+ott.counts.south <- c(rep(0,32),3,rep(0,4),2,2,rep(0,3),3,6,13,13,2,2,2,2,2,5,5,19,19,2,8,6)
+ott.abun.key <- data.frame(period=sort(unique(benthdens.dat$Period)),west=ott.counts.west,north=ott.counts.north,south=ott.counts.south)
+# **********************************
+
+```
+
+```{r benthic density dataset splits}
+## Create separate datasets for each site/swath combo (rows are periods, columns are species), and cast to matrices of periodxspecies
+# **********************************
+sites.swaths <- aggregate(list(dens=benthdens.dat$Density),by=list(station=benthdens.dat$Station,period=benthdens.dat$Period,swath=benthdens.dat$Swath,species=benthdens.dat$SpeciesCode), FUN=mean)
+
+sit.names <- unique(sites.swaths$station)
+
+
+for(i in sit.names) {
+  dat.t <- subset(sites.swaths,sites.swaths$station==i) #subset of 'master' (long form) for a given site
+  for(j in unique(dat.t$swath)) {
+    dat.t.swath <- subset(dat.t,dat.t$swath==j)
+    dat.t.swath <- acast(dat.t.swath,period~species,value.var="dens") # cast to matrix
+    dat.t.swath <- as.data.frame((dat.t.swath))
+    names(dat.t.swath) <- spp.key.bdens$name
+    datname <- paste0("site",i,".",j)
+    assign(datname,dat.t.swath) # assign raw data to variable name with site and swath (e.g. "site1.10L")
+    
+    # first differences (for detrending)
+    dat.t.diff <- diff(data.matrix(dat.t.swath))
+    dat.t.diff <- as.data.frame(dat.t.diff)
+    datname <- paste0("site",i,".",j,".diff")
+    assign(datname,dat.t.diff) # assign raw data to variable name with site and swath (e.g. "site1.10L")
+  }
+}
+#*************************************
+```
+
+
+### Adding an environmental signal-- what about El Nino?
+
+```{r el nino}
+en <- read.csv(file=paste0(W_D,"/data/elnino_sst.csv"))
+en.melt<-melt(en,id.vars="Year")%>%arrange(Year,variable)%>%mutate(month = as.numeric(variable))
+en.ts <- ts(en.melt$value,start=c(1979),frequency = 12)
+plot(en.ts,main="El Nino Index, SST Anomaly 3 month running average",xlab="Year",ylab="SST Anomaly")
+abline(h=0,lty=2)
+
+## Have to match periods in the benthic data to El Nino values
+en.per.match <- data.frame(period=1:63,date=NA,ssta=NA)
+# find first date in the benthic dataset corresponding to each period
+en.per.match$date <- benthdens.dat$Date[match(1:63,benthdens.dat$Period)]
+# pull years and months from the date, and join el nino indices for those year/months
+require(lubridate)
+en.per.match$year <- year(en.per.match$date)
+en.per.match$month <- month(en.per.match$date)
+en.per.match$ssta <- left_join(en.per.match,en.melt,by=c("year"="Year","month"="month"))$value
+
+# now we have El Nino index matched to periods from the surveys, like so:
+ggplot(en.per.match,aes(x=period,y=ssta))+geom_line()+
+  xlab("Period")+ylab("SST anomaly")+ggtitle("Oceanic Nino Index over SNI Survey Periods")+
+  geom_hline(yintercept=0,linetype=2)
+
+## save the El Nino match for later
+write.csv(en.per.match,file=paste0(W_D,"/data/el_nino_period_match.csv"),row.names=F)
+
+## full key (for comparison with other datasets, too)
+enso.full <- en.per.match
+en.per.match
+
+# and in case we need just the "complete" periods (minus the no-survey years)
+en.match.comp <- filter(en.per.match,!is.na(date))
+
+```
