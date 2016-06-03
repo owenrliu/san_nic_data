@@ -1,0 +1,34 @@
+---
+title: "pisco_swath_data"
+author: "Owen Liu"
+date: "June 3, 2016"
+output: html_document
+---
+
+### Using PISCO data to classify subtidal central coast sites
+
+```{r setup and data import, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(vegan)
+
+lunique <- function(x) length(unique(x))
+
+# working directory
+WD <- getwd()
+
+## Datasets
+spp.key <- read.csv(paste0(WD,"/data/pisco swath data/pisco_subtidal.180.1.csv"))
+
+sites.key <- read.csv(paste0(WD,"/data/pisco swath data/pisco_subtidal.181.1.csv"))
+# How many sampling dates for each site?
+sites.samples <- count(sites.key,sitename) %>% arrange(desc(n))
+# Reduced to unique rows for plotting in a GIS, and remove sites with no location data. ALSO, lat/lon columns are mixed up-- rename
+sites.locations <- sites.key %>% select(sitename,PISCO_CODE,lat_wgs84,lon_wgs84) %>% distinct() %>% filter(!is.na(lat_wgs84)) %>%
+  rename(lon_wgs84=lat_wgs84,lat_wgs84=lon_wgs84)
+write.csv(sites.locations,file=paste0(WD,"/data/pisco swath data/site_locs.csv"))
+
+swath.dat <- read.csv(paste0(WD,"/data/pisco swath data/pisco_subtidal.161.2.csv"))
+
+```

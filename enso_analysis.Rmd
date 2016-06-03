@@ -74,6 +74,7 @@ ott.abun.key <- data.frame(period=sort(unique(benthdens.dat$Period)),west=ott.co
 
 ```
 
+
 ```{r benthic density dataset splits}
 ## Create separate datasets for each site/swath combo (rows are periods, columns are species), and cast to matrices of periodxspecies
 # **********************************
@@ -127,14 +128,157 @@ ggplot(en.per.match,aes(x=period,y=ssta))+geom_line()+
   xlab("Period")+ylab("SST anomaly")+ggtitle("Oceanic Nino Index over SNI Survey Periods")+
   geom_hline(yintercept=0,linetype=2)
 
-## save the El Nino match for later
-write.csv(en.per.match,file=paste0(W_D,"/data/el_nino_period_match.csv"),row.names=F)
 
-## full key (for comparison with other datasets, too)
-enso.full <- en.per.match
-en.per.match
+## fish key (2 fewer periods)
+en.per.match.fish <- filter(en.per.match,period>2)
 
-# and in case we need just the "complete" periods (minus the no-survey years)
-en.match.comp <- filter(en.per.match,!is.na(date))
+```
+
+CCM ENSO and macrocystis?
+
+```{r CCM, enso macrocystis}
+
+# Add ENSO SSTA data to site 4 data as a column
+enso.key <- data.frame(period=as.integer(row.names(site4.10R)))
+enso.key <- left_join(enso.key,en.per.match)
+enso.key.diff <- data.frame(period=as.integer(row.names(site4.10R.diff)))
+enso.key.diff <- left_join(enso.key.diff,en.per.match)
+ssta.site4 <- enso.key$ssta
+ssta.site4.diff <- enso.key.diff$ssta
+
+# Linking the spatial replicates together (using FIRST DIFFERENCED DATA)
+NA.row <- as.data.frame(rep(NA,length(site4.10R.diff))) ## NAs are for linking "spatially-replicated time series" for multispatial CCM, see package and text
+NA.row <- as.data.frame(t(NA.row))
+names(NA.row) <- names(site4.10R.diff)
+
+# Bind all swaths ("replicates") together to produce the final dataset for testing (raw and first differenced)
+site4.all.diff <- bind_rows(site4.10R.diff,NA.row,site4.22L.diff,NA.row,site4.32L.diff,NA.row,site4.39L.diff,NA.row,site4.45L.diff)
+site4.all.diff <- as.data.frame(site4.all.diff)
+site4.all <- bind_rows(site4.10R,NA.row,site4.22L,NA.row,site4.32L,NA.row,site4.39L,NA.row,site4.45L)
+site4.all <- as.data.frame(site4.all)
+# *****************************
+
+
+# Determine E (best embedding dimension)
+# *****************************
+maxE=12
+# Matrix for storing output
+Etest<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
+
+# For each variable/species' timeseries, loop over potential E values and 
+# calculate predictive ability rho of each process for its own dynamics
+for(E in 2:maxE) {
+#Uses defaults of looking forward one prediction step (predstep)
+#And using time lag intervals of one time step (tau)
+  for(i in names(site4.all.diff)) {
+    Etest[E-1,i]<-SSR_pred_boot(A=site4.all.diff[,i], E=E, predstep=1, tau=1)$rho
+  }
+}
+
+## Remove NA columns (species for which there was no variation (e.g. rare species, lots of zeros))
+Etest <- Etest[,colSums(is.na(Etest)) == 0]
+
+# Graph relationships between embedding dimension and rho
+Emelt <- melt(Etest,id.vars="E") # long form for plotting
+ggplot(Emelt,aes(x=E,y=value)) +geom_line()+facet_wrap("variable")
+# Many of the plots are relatively flat, i.e. there isn't a huge tradeoff from choosing a shorter, more parsimonious embedding dimension.
+
+Etest.enso <- data.frame(E=2:maxE,rho=NA)
+for(E in 2:maxE) Etest.enso$rho[E-1] <-SSR_pred_boot(A=ssta.site4.diff, E=E, predstep=1, tau=1)$rho
+
+# for now, we choose:
+mac.E <- 6
+enso.E <- 2
+# ****************************************
+
+# Check data for nonlinear signal that is not dominated by noise
+# Checks whether predictive ability of processes declines with increasing time distance
+#*********************************
+mac_signal <- SSR_check_signal(A=site4.all.diff$mac,E=mac.E,predsteplist=1:25,matchSugi = 0)
+plot(mac_signal$predatout,type="l",col="darkgreen",lwd=2)
+
+enso_signal<- SSR_check_signal(A=ssta.site4.diff,E=enso.E,predsteplist=1:18,matchSugi = 0)
+plot(enso_signal$predatout,type="l",col="red",lwd=2)
+# Looks okay!
+#**********************************
+
+# Run the CCM algorithm using the embedding dimensions for the variables chosen above
+# Run it both ways (check for causal signal both ways)
+## hypothesis is that enso signal should "drive" macrocystis, but NOT the other way around
+# ******************************
+
+# Test for "mac causing enso"
+CCM_mac_enso<-CCM_boot(A=site4.all.diff$mac, B=ssta.site4.diff, E=mac.E, tau=1, iterations=100)
+
+# quick plot of result
+plot(CCM_mac_enso$Lobs,CCM_mac_enso$rho,type="l",col="red",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff")
+
+# Test for "enso causing mac"
+CCM_enso_mac<-CCM_boot(A=ssta.site4.diff, B=site4.all.diff$mac, E=enso.E, tau=1, iterations=100)
+plot(CCM_enso_mac$Lobs,CCM_enso_mac$rho,type="l",col="purple",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff")
+
+#Test for significant causal signal
+#See R function for details
+(CCM_significance_test<-ccmtest(CCM_mac_enso, CCM_enso_mac))
+
+```
+
+
+CCM eisenia and enso
+
+```{r CCM, enso eis}
+
+# test E for non diff data
+maxE=12
+# Matrix for storing output
+Etest2<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
+
+for(E in 2:maxE) {
+#Uses defaults of looking forward one prediction step (predstep)
+#And using time lag intervals of one time step (tau)
+  for(i in names(site4.all)) {
+    Etest2[E-1,i]<-SSR_pred_boot(A=site4.all[,i], E=E, predstep=1, tau=1)$rho
+  }
+}
+
+# Graph relationships between embedding dimension and rho
+Emelt2 <- melt(Etest2,id.vars="E") # long form for plotting
+ggplot(Emelt2,aes(x=E,y=value)) +geom_line()+facet_wrap("variable")
+
+
+# for now, we choose:
+eis.E <- 3
+enso.E <- 4
+# ****************************************
+
+# Check data for nonlinear signal that is not dominated by noise
+# Checks whether predictive ability of processes declines with increasing time distance
+#*********************************
+eis_signal <- SSR_check_signal(A=site4.all$eis,E=eis.E,predsteplist=1:25,matchSugi = 0)
+plot(eis_signal$predatout,type="l",col="darkgreen",lwd=2)
+
+enso_signal<- SSR_check_signal(A=ssta.site4,E=enso.E,predsteplist=1:18,matchSugi = 0)
+plot(enso_signal$predatout,type="l",col="red",lwd=2)
+# Looks okay!
+#**********************************
+
+# Run the CCM algorithm using the embedding dimensions for the variables chosen above
+# Run it both ways (check for causal signal both ways)
+## hypothesis is that enso signal should "drive" eisrocystis, but NOT the other way around
+# ******************************
+
+# Test for "eis causing enso"
+CCM_eis_enso<-CCM_boot(A=site4.all$eis, B=ssta.site4, E=eis.E, tau=1, iterations=100)
+
+# quick plot of result
+plot(CCM_eis_enso$Lobs,CCM_eis_enso$rho,type="l",col="red",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff")
+
+# Test for "enso causing eis"
+CCM_enso_eis<-CCM_boot(A=ssta.site4, B=site4.all$eis, E=enso.E, tau=1, iterations=100)
+plot(CCM_enso_eis$Lobs,CCM_enso_eis$rho,type="l",col="purple",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff")
+
+#Test for significant causal signal
+#See R function for details
+(CCM_significance_test<-ccmtest(CCM_eis_enso, CCM_enso_eis))
 
 ```
