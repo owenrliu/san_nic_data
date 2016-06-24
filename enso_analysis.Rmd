@@ -282,3 +282,15 @@ plot(CCM_enso_eis$Lobs,CCM_enso_eis$rho,type="l",col="purple",main="Library leng
 (CCM_significance_test<-ccmtest(CCM_eis_enso, CCM_enso_eis))
 
 ```
+
+Adding Sea Surface Temperature
+
+```{r sst import}
+sst.dat <- read.csv(file=paste0(W_D,"/data/SST_CDIP_SNI.csv"),stringsAsFactors = F)
+
+## variables are mean significant wave height (Hs,m), mean monthly peak period (Tp, s), mean period (Ta, s), mean monthly SST (C)
+enso.sst.key <- left_join(enso.key,sst.dat,by=c("year"="Year","month"="Month"))
+
+
+
+```

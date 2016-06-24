@@ -13,6 +13,7 @@ library(plyr)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(rEDM)
 
 WD <- getwd()
 ott <- read.csv(file=paste(WD,"/data/Table2_independent_sea_otters.csv",sep=""))
@@ -117,10 +118,21 @@ Group total landings by year, month, and origin of catch
 
 ```{r grouping urchin data}
 # Landings, converted to metric tons, by origin block, year, and month
-land.by.month <- landings.all %>% group_by(origin.code,landing.year,land.month) %>% ddply(~origin.code+landing.year+land.month,summarise,catch.mt=sum(reported.catch.lbs)/2204.62)
+land.by.month <- landings.all %>% group_by(origin.code,landing.year,land.month) %>%
+  summarise(catch.mt = sum(reported.catch.lbs)/2204.62)
+
+# Number of months' data for each fishing block
+blocks.months.count <- land.by.month %>% group_by(origin.code) %>% 
+  summarise(num.months=n()) %>% 
+  arrange(desc(num.months))
 
 # Landings, converted to metric tons, by origin block and year
-land.by.year <- landings.all %>% group_by(origin.code,landing.year) %>% ddply(~origin.code+landing.year,summarise,catch.mt=sum(reported.catch.lbs)/2204.62)
+land.by.year <- landings.all %>% group_by(origin.code,landing.year) %>%
+  summarise(catch.mt = sum(reported.catch.lbs)/2204.62)
+# Number of years' data for each fishing block
+blocks.years.count <- land.by.year %>% group_by(origin.code) %>% 
+  summarise(num.yrs=n()) %>% 
+  arrange(desc(num.yrs))
 
 # just block 813
 land.813 <- subset(land.by.year,land.by.year$origin.code==813)
@@ -143,4 +155,22 @@ plot.block <- function(block) {
   ggtitle("Urchin Catch Over Time")
 }
 
+```
+
+Sample simplex projection
+
+```{r simplex projection}
+# Start simple (1 time series)
+# We'll pick an urchin block with the longest time series (block 653)
+# Looks like this:
+bl653 <- land.by.year %>% filter(origin.code==653)
+plot(bl653$landing.year,bl653$catch.mt,type="l",main="Urchin Landings, Block 653", xlab="Year",ylab="Landings (mt)")
+
+# First difference and standardize
+bl653.st <- bl653 %>% mutate(land.diff=catch.mt-lag(catch.mt),land.st=as.numeric(scale(land.diff)))
+plot(bl653.st$landing.year,bl653.st$land.st,type="l",main="Urchin Landings, Block 653", 
+     xlab="Year",ylab="Standardized Landings (mt)")
+
+# Simplex (from rEDM package)
+test <- simplex(bl653.st$land.st)
 ```

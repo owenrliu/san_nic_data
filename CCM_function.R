@@ -1,5 +1,7 @@
 ### CCM function, based on Sugihara et al. 2012 Science
 
+# X is the hypothesized "response" variable, Y is the hypothesized "forcing" variable. We use an embedding of X and predict Y
+# to see if we can recover a signal of Y in the map of X (correlation between Yestimate and Yactual).
 predict_Y <- function(X,Y,E,tau=1) {
   require(dplyr)
   L <- length(X)
@@ -12,11 +14,13 @@ predict_Y <- function(X,Y,E,tau=1) {
   for(i in 1:E) Mx[,i] <- lead(X,(tmin-((i-1)*tau)-1))
   Mx <- Mx[complete.cases(Mx),]
   
+  print(Mx)
+  
   # finding nearest neighbors
   n.neighbors <- E+1
   Mx.dist <- as.matrix(dist(Mx,upper=T))
   Ypred <- Y[tvec] # base vector of Y values from which predictions will be made
-  Yhat <- Ypred # vector of predicted Y values
+  Yhat <- Ypred # vector to hold predicted Y values
 
   for(i in 1:length(tvec)) {
     ordered.neighbors <- order(Mx.dist[i,]) # ordered indices of closest neighbors
@@ -26,20 +30,23 @@ predict_Y <- function(X,Y,E,tau=1) {
     ordered.neighbors <- ordered.neighbors[!(ordered.neighbors %in% which(is.na(Ypred)))]
     
     neighbors.t <- ordered.neighbors[2:(n.neighbors+1)] #removes closest neighbor (the point itself)
+    print(paste(c("nearest neighbors are:",neighbors.t)))
     
     # exponential weights for Yti
     ui <- exp(-Mx.dist[i,neighbors.t]/Mx.dist[i,neighbors.t[1]])
     wi <- ui/sum(ui)
+    print(paste("weights are:",wi))
     
     # predicted Y
     Y.ti <- Ypred[neighbors.t] # pull out analagous points on Y from which to estimate Yt
     Yhat[i] <- sum(wi*Y.ti) # the estimated Y value is the weighted sum of contemporaneous nearest neighbors
+    print(paste(c("predicted Y:",Yhat[i])))
   }
   
-  return(Yhat)
+  Yhat
 }
 
-run_CCM <- function(X,Y,E,tau) {
+run_CCM <- function(X,Y,E,tau=1) {
   minL <- tau*(E-1)+3
   maxL <- length(X)-E+2
   tmin <- 1+(E-1)*tau
