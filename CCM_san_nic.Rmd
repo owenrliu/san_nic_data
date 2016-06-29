@@ -234,7 +234,7 @@ plot(purp_xmap_red_means$lib_size, pmax(0, purp_xmap_red_means$rho), type = "l",
     lwd = 2)
 lines(red_xmap_purp_means$lib_size, pmax(0, red_xmap_purp_means$rho), col = "red", lwd = 2)
 legend(x = "topleft", legend = c("Purple xmap Red Urchins", "Red xmap Purple Urchins"), 
-    col = c("red", "blue"), lwd = 2, inset = 0.02, bty = "n", cex = 0.8)
+    col = c("purple", "red"), lwd = 2, inset = 0.02, bty = "n", cex = 0.8)
 abline(h = 0, lty = 3, col = "darkgrey", lwd = 2)
 
 # Add CI's
@@ -247,4 +247,77 @@ lines(red_xmap_purp_means$lib_size, red_xmap_purp_means$rho + red_xmap_purp_mean
 lines(red_xmap_purp_means$lib_size, red_xmap_purp_means$rho - red_xmap_purp_means$sd.rho, col = "red", 
     lty = 2, lwd = 2)
 
+```
+
+Red urchins and macrocystis
+
+```{r red and macro}
+mac_xmap_red <- ccm(block=composite.ts, lib=segments, pred=segments, E=6,lib_column = "mac",target_column = "red",
+                     lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
+
+# to look at uni- vs. bi-directional causation, we also do the inverse (mac predicting red, E=best E for mac=4)
+red_xmap_mac<- ccm(composite.ts, lib=segments, pred=segments, E=6,lib_column = "red",target_column = "mac",
+                     lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
+
+# means and sd for each library size
+mac_xmap_red_means <- data.frame(ccm_means(mac_xmap_red),sd.rho=with(mac_xmap_red,tapply(rho,lib_size,sd)))
+red_xmap_mac_means <- data.frame(ccm_means(red_xmap_mac),sd.rho=with(red_xmap_mac,tapply(rho,lib_size,sd)))
+
+# plot of output
+# Plot output
+par(mar = c(4, 4, 1, 1))
+plot(mac_xmap_red_means$lib_size, pmax(0, mac_xmap_red_means$rho), type = "l", col = "darkgreen", 
+    xlab = "Library Size", ylab = "Cross Map Skill (rho)", ylim = c(0, 0.6), 
+    lwd = 2)
+lines(red_xmap_mac_means$lib_size, pmax(0, red_xmap_mac_means$rho), col = "red", lwd = 2)
+legend(x = "topleft", legend = c("Macrocystis xmap Red Urchins", "Red Urchins xmap Macrocystis"), 
+    col = c("darkgreen", "red"), lwd = 2, inset = 0.02, bty = "n", cex = 0.8)
+abline(h = 0, lty = 3, col = "darkgrey", lwd = 2)
+
+# Add CI's
+lines(mac_xmap_red_means$lib_size, mac_xmap_red_means$rho + mac_xmap_red_means$sd.rho, col = "darkgreen", 
+    lty = 2, lwd = 2)
+lines(mac_xmap_red_means$lib_size, mac_xmap_red_means$rho - mac_xmap_red_means$sd.rho, col = "darkgreen", 
+    lty = 2, lwd = 2)
+lines(red_xmap_mac_means$lib_size, red_xmap_mac_means$rho + red_xmap_mac_means$sd.rho, col = "red", 
+    lty = 2, lwd = 2)
+lines(red_xmap_mac_means$lib_size, red_xmap_mac_means$rho - red_xmap_mac_means$sd.rho, col = "red", 
+    lty = 2, lwd = 2)
+
+```
+
+Purple urchins and macrocystis
+
+```{r purple and macro}
+mac_xmap_purp<- ccm(composite.ts, lib=segments, pred=segments, E=4,lib_column = "mac",target_column = "purp",
+                     lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
+
+# to look at uni- vs. bi-directional causation, we also do the inverse (purp pmacicting mac, E=best E for purp=4)
+purp_xmap_mac <- ccm(block=composite.ts, lib=segments, pred=segments, E=6,lib_column = "purp",target_column = "mac",
+                     lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
+
+# means and sd for each library size
+purp_xmap_mac_means <- data.frame(ccm_means(purp_xmap_mac),sd.rho=with(purp_xmap_mac,tapply(rho,lib_size,sd)))
+mac_xmap_purp_means <- data.frame(ccm_means(mac_xmap_purp),sd.rho=with(mac_xmap_purp,tapply(rho,lib_size,sd)))
+
+# plot of output
+# Plot output
+par(mar = c(4, 4, 1, 1))
+plot(purp_xmap_mac_means$lib_size, pmax(0, purp_xmap_mac_means$rho), type = "l", col = "purple", 
+    xlab = "Library Size", ylab = "Cross Map Skill (rho)", ylim = c(0, 0.8), 
+    lwd = 2)
+lines(mac_xmap_purp_means$lib_size, pmax(0, mac_xmap_purp_means$rho), col = "darkgreen", lwd = 2)
+legend(x = "topleft", legend = c("Purple Urchins xmap Macrocystis", "Macrocystis xmap Purple Urchins"), 
+    col = c("purple", "darkgreen"), lwd = 2, inset = 0.02, bty = "n", cex = 0.8)
+abline(h = 0, lty = 3, col = "darkgrey", lwd = 2)
+
+# Add CI's
+lines(purp_xmap_mac_means$lib_size, purp_xmap_mac_means$rho + purp_xmap_mac_means$sd.rho, col = "purple", 
+    lty = 2, lwd = 2)
+lines(purp_xmap_mac_means$lib_size, purp_xmap_mac_means$rho - purp_xmap_mac_means$sd.rho, col = "purple", 
+    lty = 2, lwd = 2)
+lines(mac_xmap_purp_means$lib_size, mac_xmap_purp_means$rho + mac_xmap_purp_means$sd.rho, col = "darkgreen", 
+    lty = 2, lwd = 2)
+lines(mac_xmap_purp_means$lib_size, mac_xmap_purp_means$rho - mac_xmap_purp_means$sd.rho, col = "darkgreen", 
+    lty = 2, lwd = 2)
 ```
