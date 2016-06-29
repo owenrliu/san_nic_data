@@ -6,15 +6,14 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-
 library(ggplot2)
-library(plyr)
+library(tidyr)
 library(dplyr)
 library(reshape2)
 library(vegan)
 library(rgdal)
-library(multispatialCCM)
 library(tseries)
+library(rEDM)
 
 #### Data ####
 #note: all raw data has a .dat
@@ -49,334 +48,203 @@ ott.counts.north <- c(rep(0,29),rep(4,3),5,rep(1,9),0,1,rep(0,7),1,1,0,0,1,4,0)
 ott.counts.south <- c(rep(0,32),3,rep(0,4),2,2,rep(0,3),3,6,13,13,2,2,2,2,2,5,5,19,19,2,8,6)
 ott.abun.key <- data.frame(period=sort(unique(benthdens.dat$Period)),west=ott.counts.west,north=ott.counts.north,south=ott.counts.south)
 
-# **********************************
-
-## Create separate datasets for each site/swath combo (rows are periods, columns are species), and cast to matrices of periodxspecies
-# **********************************
-sites.swaths <- aggregate(list(dens=benthdens.dat$Density),by=list(station=benthdens.dat$Station,period=benthdens.dat$Period,swath=benthdens.dat$Swath,species=benthdens.dat$SpeciesCode), FUN=mean)
-
-sit.names <- unique(sites.swaths$station)
-
-
-for(i in sit.names) {
-  dat.t <- subset(sites.swaths,sites.swaths$station==i) #subset of 'master' (long form) for a given site
-  for(j in unique(dat.t$swath)) {
-    dat.t.swath <- subset(dat.t,dat.t$swath==j)
-    dat.t.swath <- acast(dat.t.swath,period~species,value.var="dens") # cast to matrix
-    dat.t.swath <- as.data.frame((dat.t.swath))
-    names(dat.t.swath) <- spp.key.bdens$name
-    datname <- paste0("site",i,".",j)
-    assign(datname,dat.t.swath) # assign raw data to variable name with site and swath (e.g. "site1.10L")
-    
-    # first differences (for detrending)
-    dat.t.diff <- diff(data.matrix(dat.t.swath))
-    dat.t.diff <- as.data.frame(dat.t.diff)
-    datname <- paste0("site",i,".",j,".diff")
-    assign(datname,dat.t.diff) # assign raw data to variable name with site and swath (e.g. "site1.10L")
-  }
-}
-#*************************************
-```
-
-Convergent cross mapping of the time series.  Based on Sugihara et al. 2012 Science; and Clark et al. 2015 Ecology.
-
-```{r CCM benthic data}
-require(multispatialCCM)
-
-# Starting with site(station) 2 (West End of SNI)
-# Hellinger-transform the data
-site2.10L.hel <- decostand(site2.10L,"hel")
-site2.22L.hel <- decostand(site2.22L,"hel")
-site2.32R.hel <- decostand(site2.32R,"hel")
-site2.39L.hel <- decostand(site2.39L,"hel")
-site2.45L.hel <- decostand(site2.45L,"hel")
-NA.row <- as.data.frame(rep(NA,length(site2.10L.hel))) ## NAs are for linking "spatially-replicated time series" for multispatial CCM, see package and text
-NA.row <- as.data.frame(t(NA.row))
-names(NA.row) <- names(site2.10L)
-
-# Bind all swaths ("replicates") together to produce the final dataset for testing
-site2.all.hel <- bind_rows(site2.10L.hel,NA.row,site2.22L.hel,NA.row,site2.32R.hel,NA.row,site2.39L.hel,NA.row,site2.45L.hel)
-site2.all.hel <- as.data.frame(site2.all.hel)
-
-### First, try to find optimal E (embedding dimension) 
-#***************************
-
-maxE<-18 #Maximum E to test
-
-# Matrix for storing output
-Etest<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
-
-# For each variable/species' timeseries, loop over potential E values and 
-# calculate predictive ability rho of each process for its own dynamics
-for(E in 2:maxE) {
-#Uses defaults of looking forward one prediction step (predstep)
-#And using time lag intervals of one time step (tau)
-  for(i in names(site2.all.hel)) {
-    Etest[E-1,i]<-SSR_pred_boot(A=site2.all.hel[,i], E=E, predstep=1, tau=1)$rho
-  }
-}
-
-# Look at plots to find E for each variable at which predictive ability rho is maximized
-matplot(2:maxE, Etest[2:length(Etest)], type="l", col=rainbow(19), lty=1:3,
-xlab="E", ylab="rho", lwd=2)
-.pardefault <- par(no.readonly = T)
-par(xpd=T,mar=c(5,4,4,12))
-legend(12.5,0.8, names(Etest[2:length(Etest)]), lty=1:3, col=rainbow(19), lwd=2, bty="n")
-par(.pardefault)
-
-## Remove NA columns (species for which there was no variation (e.g. rare species, lots of zeros))
-Etest <- Etest[,colSums(is.na(Etest)) == 0]
-
-# Graph relationships between embedding dimension and rho
-Emelt <- melt(Etest,id.vars="E") # long form for plotting
-ggplot(Emelt,aes(x=E,y=value)) +geom_line()+facet_wrap("variable")
-# Many of the plots are relatively flat, i.e. there isn't a huge tradeoff from choosing a shorter, more parsimonious embedding dimension.
-
-# find best E for each variable (maximum absolute value rho)
-bestE <- data.frame(E=sapply(Etest[2:length(Etest)],function(x) Etest$E[abs(x)==max(abs(x))]))
-bestE$rho <- sapply(Etest[2:length(Etest)],function(x) x[abs(x)==max(abs(x))])
-
-### Now we have optimal embedding dimension for each variable
-
-#****************************************
-# Check data for nonlinear signal that is not dominated by noise
-# Checks whether predictive ability of processes declines with increasing time distance
-signal_purp_check <- SSR_check_signal(A=site2.all.hel$purp,E=bestE["purp","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_purp_check$predatout,type="l",col="purple")
-
-signal_red_check <- SSR_check_signal(A=site2.all.hel$red,E=bestE["red","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_red_check$predatout,type="l",col="red")
-
-signal_mac_check <- SSR_check_signal(A=site2.all.hel$mac,E=bestE["mac","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_mac_check$predatout,type="l",col="darkgreen")
-
-signal_cys_check <- SSR_check_signal(A=site2.all.hel$cys,E=bestE["cys","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_cys_check$predatout,type="l",col="orange")
-```
-
-A major problem in these "diagnostic plots" for some variables is the rise in predictive power with prediction interval (U-shaped graphs), suggesting cyclical patterns or a temporal trend in the data.  Try standardizing each timeseries to unit variance (mean 0, sd 1).
-
-```{r standardizing}
-
-#*********************
-site2.10L.st <- decostand(site2.10L,method="standardize")
-site2.22L.st <- decostand(site2.22L,method="standardize")
-site2.32R.st <- decostand(site2.32R,method="standardize")
-site2.39L.st <- decostand(site2.39L,method="standardize")
-site2.45L.st <- decostand(site2.45L,method="standardize")
-NA.row <- as.data.frame(rep(NA,length(site2.10L.st))) ## NAs are for linking "spatially-replicated time series" for multispatial CCM, see package and text
-NA.row <- as.data.frame(t(NA.row))
-names(NA.row) <- names(site2.10L.st)
-
-# Bind all swaths ("replicates") together to produce the final dataset for testing
-site2.all.st <- bind_rows(site2.10L.st,NA.row,site2.22L.st,NA.row,site2.32R.st,NA.row,site2.39L.st,NA.row,site2.45L.st)
-site2.all.st <- as.data.frame(site2.all.st)
-
-## Embedding dimension
-Etest.st<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
-
-# For each variable/species' timeseries, loop over potential E values and 
-# calculate predictive ability rho of each process for its own dynamics
-for(E in 2:maxE) {
-#Uses defaults of looking forward one prediction step (predstep)
-#And using time lag intervals of one time step (tau)
-  for(i in names(site2.all.st)) {
-    Etest.st[E-1,i]<-SSR_pred_boot(A=site2.all.st[,i], E=E, predstep=1, tau=1)$rho
-  }
-}
-
-## Remove NA columns (species for which there was no variation (e.g. rare species, lots of zeros))
-Etest.st <- Etest.st[,colSums(is.na(Etest.st)) == 0]
-
-# Graph relationships between embedding dimension and rho
-Emelt.st <- melt(Etest.st,id.vars="E") # long form for plotting
-ggplot(Emelt.st,aes(x=E,y=value)) +geom_line()+facet_wrap("variable")
-
-# find best E for each variable (maximum absolute value rho)
-bestE.st <- data.frame(E=sapply(Etest.st[2:length(Etest.st)],function(x) Etest.st$E[abs(x)==max(abs(x))]))
-bestE.st$rho <- sapply(Etest.st[2:length(Etest.st)],function(x) x[abs(x)==max(abs(x))])
-
-# Checks whether predictive ability of processes declines with increasing time distance
-signal_purp_check <- SSR_check_signal(A=site2.all.st$purp,E=bestE["purp","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_purp_check$predatout,type="l",col="purple")
-
-signal_red_check <- SSR_check_signal(A=site2.all.st$red,E=bestE["red","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_red_check$predatout,type="l",col="red")
-
-signal_mac_check <- SSR_check_signal(A=site2.all.st$mac,E=bestE["mac","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_mac_check$predatout,type="l",col="darkgreen")
-
-signal_cys_check <- SSR_check_signal(A=site2.all.st$cys,E=bestE["cys","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_cys_check$predatout,type="l",col="orange")
-#******************************
-```
-
-The problem is still present here... what about first-differencing and then standardizing?
-
-```{r first diff and standard}
-#*********************
-site2.10L.diff <- as.data.frame(diff(data.matrix(site2.10L)))
-site2.10L.diff <- as.data.frame(diff(data.matrix(site2.22L)))
-site2.10L.diff <- as.data.frame(diff(data.matrix(site2.32R)))
-site2.10L.diff <- as.data.frame(diff(data.matrix(site2.39L)))
-site2.10L.diff <- as.data.frame(diff(data.matrix(site2.45L)))
-
-site2.10L.diff.st <- decostand(site2.10L.diff,method="standardize")
-site2.22L.diff.st <- decostand(site2.22L.diff,method="standardize")
-site2.32R.diff.st <- decostand(site2.32R.diff,method="standardize")
-site2.39L.diff.st <- decostand(site2.39L.diff,method="standardize")
-site2.45L.diff.st <- decostand(site2.45L.diff,method="standardize")
-
-### A quick look at what differencing and standardizing has done (this case to red urchin data)
-plot(site2.10L$red,type="l",col="red",xlab="period",ylab="density (raw or trans)",main="raw")
-plot(site2.10L.hel$red,type="l",col="red",xlab="period",ylab="density (raw or trans)",main="hellinger")
-plot(site2.10L.st$red,type="l",col="red",xlab="period",ylab="density (raw or trans)",main="standardized")
-plot(site2.10L.diff.st$red,type="l",col="red",xlab="period",ylab="density (raw or trans)",main="1st diff and stand")
-
-
-NA.row <- as.data.frame(rep(NA,length(site2.10L.diff.st))) ## NAs are for linking "spatially-replicated time series" for multispatial CCM, see package and text
-NA.row <- as.data.frame(t(NA.row))
-names(NA.row) <- names(site2.10L.diff.st)
-
-# Bind all swaths ("replicates") together to produce the final dataset for testing
-site2.all.diff.st <- bind_rows(site2.10L.diff.st,NA.row,site2.22L.diff.st,NA.row,site2.32R.diff.st,NA.row,site2.39L.diff.st,NA.row,site2.45L.diff.st)
-site2.all.diff.st <- as.data.frame(site2.all.diff.st)
-
-## Embedding dimension
-Etest.diff.st<-data.frame("E"=2:maxE,"pat"=NA,"red"=NA,"purp"=NA,"wavy"=NA,"astro"=NA,"derm"=NA,"halc"=NA,"halr"=NA,"limp"=NA,"paras"=NA,"pis"=NA,"pyc"=NA,"cys"=NA,"lam"=NA,"ymac"=NA,"youn"=NA,"eis"=NA,"pter"=NA,"mac"=NA)
-
-# For each variable/species' timeseries, loop over potential E values and 
-# calculate predictive ability rho of each process for its own dynamics
-for(E in 2:maxE) {
-#Uses defaults of looking forward one prediction step (predstep)
-#And using time lag intervals of one time step (tau)
-  for(i in names(site2.all.diff.st)) {
-    Etest.diff.st[E-1,i]<-SSR_pred_boot(A=site2.all.diff.st[,i], E=E, predstep=1, tau=1)$rho
-  }
-}
-
-## Remove NA columns (species for which there was no variation (e.g. rare species, lots of zeros))
-Etest.diff.st <- Etest.diff.st[,colSums(is.na(Etest.diff.st)) == 0]
-
-# Graph relationships between embedding dimension and rho
-Emelt.diff.st <- melt(Etest.diff.st,id.vars="E") # long form for plotting
-ggplot(Emelt.diff.st,aes(x=E,y=value)) +geom_line()+facet_wrap("variable")
-
-# find best E for each variable (maximum absolute value rho)
-bestE.diff.st <- data.frame(E=sapply(Etest.diff.st[2:length(Etest.diff.st)],function(x) Etest.diff.st$E[abs(x)==max(abs(x))]))
-bestE.diff.st$rho <- sapply(Etest.diff.st[2:length(Etest.diff.st)],function(x) x[abs(x)==max(abs(x))])
-
-# Checks whether predictive ability of processes declines with increasing time distance
-signal_purp_check <- SSR_check_signal(A=site2.all.diff.st$purp,E=bestE["purp","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_purp_check$predatout,type="l",col="purple")
-
-signal_red_check <- SSR_check_signal(A=site2.all.diff.st$red,E=bestE["red","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_red_check$predatout,type="l",col="red")
-
-signal_mac_check <- SSR_check_signal(A=site2.all.diff.st$mac,E=bestE["mac","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_mac_check$predatout,type="l",col="darkgreen")
-
-signal_cys_check <- SSR_check_signal(A=site2.all.diff.st$cys,E=bestE["cys","E"],predsteplist=1:18,matchSugi = 0)
-plot(signal_cys_check$predatout,type="l",col="orange")
-#******************************
-
-## This looks better! graphs of E vs. rho and predstep vs. L are much cleaner.  Let's proceed with this for now
-```
-
-Do red and purple urchins drive each other at the West End?
-
-```{r red vs. purple}
-#Run the CCM test
-#E_A and E_B are the embedding dimensions for A and B.
-#tau is the length of time steps used (default is 1)
-#iterations is the number of bootsrap iterations (default 100)
-# Does red "cause" purp?
-
-# set embedding dimension based on previous analysis (choice: best balance of not too large and near the absolute best choice)
-E_red <- 9
-E_purp <- 4
-
-# Test for "red causing purple"
-CCM_boot_red<-CCM_boot(A=site2.all.diff.st$red, B=site2.all.diff.st$purp, E=E_red, tau=1, iterations=100)
-# quick plot of result
-plot(CCM_boot_red$Lobs,CCM_boot_red$rho,type="l",col="red",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff")
-
-# Does purp "cause" red?
-CCM_boot_purp<-CCM_boot(A=site2.all.diff.st$purp, B=site2.all.diff.st$red, E=E_purp, tau=1, iterations=100)
-lines(CCM_boot_purp$Lobs,CCM_boot_purp$rho,type="l",col="purple")
-
-# in ggplot
-red.out <- data.frame(L=CCM_boot_red$Lobs,rho.red=CCM_boot_red$rho,sd.red=CCM_boot_red$sdevrho)
-purp.out <- data.frame(L=CCM_boot_purp$Lobs,rho.purp=CCM_boot_purp$rho,sd.purp=CCM_boot_purp$sdevrho)
-red.purp <- inner_join(purp.out,red.out)
-red.purp <- mutate(red.purp,upper.red=rho.red+sd.red,lower.red=rho.red-sd.red,upper.purp=rho.purp+sd.purp,lower.purp=rho.purp-sd.purp,Lcum=rank(L))
-
-cols <- c("red causes purp"="red","purp causes red"="green")
-ggplot(red.purp) + geom_ribbon(aes(x=Lcum,ymin=lower.red,ymax=upper.red),fill="red",alpha=0.3)+
-  geom_ribbon(aes(x=Lcum,ymin=lower.purp,ymax=upper.purp),fill="green",alpha=0.3)+
-  geom_line(aes(x=Lcum,y=rho.red,col="red causes purp")) +
-  geom_line(aes(x=Lcum,y=rho.purp,col="purp causes red")) +
-  labs(title="CCM, Red Urchins and Purple Urchins, Site 2",x="Library length (L)",y="Pearson correlation coefficient +/- 1 SD")+
-  scale_color_manual(name="Process",values=cols)+theme_minimal()
-
-#Test for significant causal signal
-#See R function for details
-(CCM_significance_test<-ccmtest(CCM_boot_red,
-CCM_boot_purp))
-
-```
-
-Red urchins and macrocystis
-
-```{r red and mac CCM}
-# Need to set 'optimal' E for macro
-E_mac=4
-
-# Test for "red causing mac"
-CCM_red_cause_mac<-CCM_boot(A=site2.all.diff.st$red, B=site2.all.diff.st$mac, E=E_red, tau=1, iterations=100)
-# quick plot of result
-plot(CCM_red_cause_mac$Lobs,CCM_red_cause_mac$rho,type="l",col="red",main="Library length vs. predictive ability",xlab="Library length (L)",ylab="Pearson corr coeff",ylim=c(0,0.7))
-
-# Does mac "cause" red?
-CCM_mac_cause_red<-CCM_boot(A=site2.all.diff.st$purp, B=site2.all.diff.st$red, E=E_mac, tau=1, iterations=100)
-lines(CCM_mac_cause_red$Lobs,CCM_mac_cause_red$rho,type="l",col="green")
-
-# in ggplot
-red.out <- data.frame(L=CCM_red_cause_mac$Lobs,rho.red=CCM_red_cause_mac$rho,sd.red=CCM_red_cause_mac$sdevrho)
-mac.out <- data.frame(L=CCM_mac_cause_red$Lobs,rho.mac=CCM_mac_cause_red$rho,sd.mac=CCM_mac_cause_red$sdevrho)
-red.mac <- inner_join(mac.out,red.out)
-red.mac <- mutate(red.mac,upper.red=rho.red+sd.red,lower.red=rho.red-sd.red,upper.mac=rho.mac+sd.mac,lower.mac=rho.mac-sd.mac,Lcum=rank(L))
-
-cols <- c("Red causes mac"="red","Mac causes red"="green")
-ggplot(red.mac) + geom_ribbon(aes(x=Lcum,ymin=lower.red,ymax=upper.red),fill="red",alpha=0.3)+
-  geom_ribbon(aes(x=Lcum,ymin=lower.mac,ymax=upper.mac),fill="green",alpha=0.3)+
-  geom_line(aes(x=Lcum,y=rho.red,col="Red causes mac")) +
-  geom_line(aes(x=Lcum,y=rho.mac,col="Mac causes red")) +
-  labs(title="CCM, Red Urchins and Macrocystis, Site 2",x="Library length (L)",y="Pearson correlation coefficient +/- 1 SD")+
-  scale_color_manual(name="Process",values=cols)+theme_minimal()
-
-(CCM_significance_test<-ccmtest(CCM_red_cause_mac,
-CCM_mac_cause_red))
+# ***********************************
+# Replace species code with species name and rename some variables
+benthdat <- benthdens.dat %>% 
+  rename(station=Station,period=Period,date=Date,swath=Swath,dens=Density) %>%
+  left_join(select(spp.key.bdens,SpeciesCode,name),by="SpeciesCode") %>%
   
+  # remove unneeded columns
+  select(-SpeciesCode,-date) %>%
+  rename(spp=name) %>%
+  arrange(spp,period,swath) %>%
+  
+  # join station and swath columns into one unique 'site' identifier
+  unite(site,station,swath)
+
+#*************************************
+# There's one more problem, which is that there are some periods which were not sampled. It's better to make those values NAs in the data than just skipping over time periods.  This set of code expands the timeseries for each site/species to include NA density values for missing survey times.
+
+periods.all <- data_frame(period=1:63)
+sites <- sort(unique(benthdat$site))
+spps <- sort(unique(benthdat$spp))
+benthdat.full <- data_frame()
+for(i in 1:length(sites)) {
+  for(j in 1:length(spps)) {
+    temp <- benthdat %>% filter(site==sites[i],spp==spps[j])
+    temp <- full_join(periods.all,temp,by="period") %>% mutate(site=sites[i],spp=spps[j])
+    benthdat.full <- bind_rows(benthdat.full,temp)
+  }
+}
+
 ```
 
-We see a very strong signal!
+Convergent cross mapping of the time series.  Based on Sugihara et al. 2012 Science; and Clark et al. 2015 Ecology.  First we run simplex analysis to establish embedding dimension for each species.  Then we can look for nonlinearity and cross mapping.  Because the San Nicolas data is split into periods and swaths, we'll take advantage of all the data we can for each species by constructing library vectors from all records of all swaths within a station, making sure not to construct library vectors spanning two different swaths.
 
-mean-variance
+```{r simplex and smap}
 
-```{r mean var}
-mean.var.spe <- benthdens.dat %>% group_by(Station,Period,SpeciesCode) %>% summarise(mean=mean(Density),var=var(Density))
+spp.simplex.smap <- function(species, stations=c(1:7), plotout = TRUE) {
+  
+  # all data for a particular species
+  spp.dat <- filter(benthdat.full, spp==species) %>%
+    
+    # select only some stations (if applicable)
+    separate(site,into=c("station","swath"),sep="_",remove=FALSE) %>%
+    filter(station %in% stations) %>%
+    arrange(site,period)
+  
+  # we need a record of the segments (indices of the beginning and end of each timeseries), so that simplex and s-map do not produce library or prediction vectors that span separate timeseries. This 2-column matrix denotes the row indices of the first and last record in each timeseries.
+  
+  segments <- spp.dat %>% mutate(ind = row_number()) %>% group_by(site) %>% summarise(first=first(ind),last=last(ind))
+  
+  # Now we can produce a random set of half of the segments for prediction, and use the others for the library
+  rndlib <- segments %>% sample_frac(0.5,replace=F) %>% arrange(first) %>% select(-site)
+  rndpred <- anti_join(segments,rndlib,by=c("first","last")) %>% arrange(first) %>% select(-site) # prediction vectors and library vectors mutually exclusive
+  rndlib <- as.matrix(rndlib)
+  rndpred <- as.matrix(rndpred)
+  
+  # composite timeseries (just year and data)
+  ts.mat <- as.matrix(select(spp.dat,period,dens))
+  
+  # Now we can finally run simplex and s-map.
+  # A NOTE HERE: using option exclusion_radius allows us to also remove from the library for each prediction the concurrent years' data from the other pooled timeseries, reducing overestimation due to spatial autocorrelation. For now we'll use an exclusion radius of 1 (for simplex) and min(3,E) for smap.
+  spp.simplex <- simplex(ts.mat,lib=rndlib,pred=rndpred,E=c(2:8))
+  if(plotout) {
+    plot(spp.simplex$E,spp.simplex$rho,type="l",xlab="Embedding Dimension (E)",ylab="Forecast Skill(rho)",main=species)
+  }
+  
+  # find best E from simplex output
+  bestE <- spp.simplex$E[which(spp.simplex$rho==max(spp.simplex$rho))]
+  print(paste("Best embedding dimension is",bestE))
+  
+  # Prediction decay check (checking for the butterfly effect)
+  spp.tp.test <- simplex(ts.mat,lib=rndlib,pred=rndpred,E=bestE,tp=1:10)
+  if(plotout) {
+    plot(spp.tp.test$tp,spp.tp.test$rho,type="l",xlab="Prediction Horizon (tp)",ylab="Forecast Skill(rho)",main=species)
+  }
+  
+  # Good forecast skill, and best E (best embedding dimension) recorded.  Now we can s-map to look for nonlinearity
+  spp.smap <- s_map(ts.mat,lib=rndlib,pred=rndpred,E=bestE,exclusion_radius = 1)
+  if(plotout) {
+    plot(spp.smap$theta,spp.smap$rho,type="l",xlab="Nonlinearity (theta)",ylab="Forecast Skill(rho)",main=species)
+  }
+  out <- list(bestE=bestE,simp = spp.simplex,tp=spp.tp.test,smap = spp.smap)
+  return(out)
+}
 
-normalize <- function(x) ifelse(x>0,x/sqrt(sum(x^2)),0)
-hellinger <- function(x) ifelse(x>0,sqrt(x/sum(x)),0)
-verify <- function(x) as.numeric(sqrt(x%*%x))
+```
 
-mean.var.chd.hel <- benthdens.dat %>% group_by(Station,Period,Swath) %>% mutate(chord=normalize(Density),hel=hellinger(Density))%>% group_by(Station,Period,SpeciesCode)%>%summarise(mean.ch=mean(chord),var.ch=var(chord),mean.hel=mean(hel),var.hel=var(hel))
-ggplot(mean.var.spe,aes(x=mean,y=var,col=factor(Station))) + geom_point() + scale_x_log10()+scale_y_log10()
-ggplot(mean.var.chd.hel,aes(x=mean.ch,y=var.ch,col=factor(Station))) + geom_point()
-ggplot(mean.var.chd.hel,aes(x=mean.hel,y=var.hel,col=factor(Station))) + geom_point()
+Let's apply this to a subset of species in the San Nic dataset.  Let's look for species without too many zeroes, so the dynamics aren't weirdly skewed.
 
-normalize <- function(x) ifelse(x>0,x/sqrt(sum(x^2)),0)
-hellinger <- function(x) ifelse(x>0,sqrt(x/sum(x)),0)
-verify <- function(x) as.numeric(sqrt(x%*%x))
+```{r apply simp and smap}
+# What proportion of zeroes in the data for each species/site?
+numzeroes <- benthdat.full %>% group_by(spp) %>% filter(dens==0) %>% summarise(zeroes=n())
+propzeroes <- benthdat.full %>% group_by(spp) %>% 
+  filter(dens != 0) %>% 
+  summarise(nonzeroes=n()) %>%
+  left_join(numzeroes, by="spp") %>%
+  mutate(propzeroes=(zeroes/(nonzeroes+zeroes))) %>%
+  arrange(propzeroes)
+
+usable.spp <- propzeroes$spp[1:14]
+
+# Lists to store simplex and smap output for each species
+spp.simp.list <- list()
+bestE <- data_frame(species = usable.spp,E=NA)
+spp.tp.list <- list()
+spp.smap.list <- list()
+
+for(i in 1:length(usable.spp)) {
+  sppname <- usable.spp[i]
+  temp <- spp.simplex.smap(species=usable.spp[i],plotout=FALSE)
+  spp.simp.list[[sppname]] <- temp$simp
+  spp.tp.list[[sppname]] <- temp$tp
+  spp.smap.list[[sppname]] <- temp$smap
+  bestE[i,"E"] <- temp$bestE
+  rm(temp)
+}
+
+# plot simplex output
+par(mfrow=c(2,2))
+
+for(i in 1:length(spp.simp.list)) {
+  sppname <- names(spp.simp.list)[i]
+  df <- spp.simp.list[[i]]
+  plot(df$E,df$rho,type="l",xlab="Embedding Dimension (E)",ylab="Forecast Skill(rho)",main=paste(sppname,"simplex"))
+}
+
+#plot prediction horizons
+plot.new()
+for(i in 1:length(spp.tp.list)) {
+  sppname <- names(spp.tp.list)[i]
+  df <- spp.tp.list[[i]]
+  plot(df$tp,df$rho,type="l",xlab="Prediction Horizon (tp)",ylab="Forecast Skill(rho)",main=paste(sppname,"prediction decay"))
+}
+# plot smap output
+plot.new()
+
+for(i in 1:length(spp.smap.list)) {
+  sppname <- names(spp.smap.list)[i]
+  df <- spp.smap.list[[i]]
+  plot(df$theta,df$rho,type="l",xlab="Nonlinearity (theta)",ylab="Forecast Skill(rho)",main=paste(sppname,"smap"))
+}
+par(mfrow=c(1,1))
+```
+
+To do cross-mapping, it really helps to have the data organized in a way such that the time indices are all the same across all species.  So here, we'll make a large composites timeseries with the appended timeseries from all sites, but with columns being species.  We can use this composite for multivariate prediction and cross-mapping.
+
+```{r composite timeseries}
+composite.ts <- filter(benthdat.full, spp %in% usable.spp) %>%
+  dcast(period + site ~ spp,value.var="dens") %>%
+  arrange(site)
+```
+
+Now we have vertically "stacked" timeseries across species.  Time to run CCM.  For these, we'll use leave-one-out cross-validation (predicting one lagged vector at a time, using all the rest as library) instead of completely separate library and prediction timeseries.  However, we still have to denote segments of the pooled timeseries in order to avoid spanning separate timeseries in either prediction or library vectors.
+
+Also, keep in mind that with CCM, prediction is in the opposite direction from normal causation theory: If we hypothesize that X is forcing or "causing" Y, then the behavior/dynamics of X leave a signature on Y.  Therefore, we try to "cross-predict" X based on the reconstructured state-space of Y.  If this cross-prediction of X from Y is positive, signficant, and convergent, we can infer causality.
+
+```{r CCM}
+# Composite segments (i.e., row indices denoting different sites' timeseries)
+segments <- composite.ts %>% 
+  mutate(ind = row_number()) %>% 
+  group_by(site) %>% 
+  summarise(first=first(ind),last=last(ind)) %>%
+  select(-site) %>%
+  as.matrix()
+
+composite.ts <- composite.ts %>% select(-site) %>% as.matrix()
+
+# first, a test: red vs. purple urchins. Test first if red urchin abundance forces purple urchin abundance. Remember, this hypothesis implies that "red" has left a signature on "purp", so we should be able to predict red based on SSR of purple. Embedding dimension will be the best that we found previously for red (E=6).
+purp_xmap_red <- ccm(block=composite.ts, lib=segments, pred=segments, E=6,lib_column = "purp",target_column = "red",
+                     lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
+
+# to look at uni- vs. bi-directional causation, we also do the inverse (purple predicting red, E=best E for purp=4)
+red_xmap_purp<- ccm(composite.ts, lib=segments, pred=segments, E=4,lib_column = "red",target_column = "purp",
+                     lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
+
+# means and sd for each library size
+purp_xmap_red_means <- data.frame(ccm_means(purp_xmap_red),sd.rho=with(purp_xmap_red,tapply(rho,lib_size,sd)))
+red_xmap_purp_means <- data.frame(ccm_means(red_xmap_purp),sd.rho=with(red_xmap_purp,tapply(rho,lib_size,sd)))
+
+# plot of output
+# Plot output
+par(mar = c(4, 4, 1, 1))
+plot(purp_xmap_red_means$lib_size, pmax(0, purp_xmap_red_means$rho), type = "l", col = "purple", 
+    xlab = "Library Size", ylab = "Cross Map Skill (rho)", ylim = c(0, 0.6), 
+    lwd = 2)
+lines(red_xmap_purp_means$lib_size, pmax(0, red_xmap_purp_means$rho), col = "red", lwd = 2)
+legend(x = "topleft", legend = c("Purple xmap Red Urchins", "Red xmap Purple Urchins"), 
+    col = c("red", "blue"), lwd = 2, inset = 0.02, bty = "n", cex = 0.8)
+abline(h = 0, lty = 3, col = "darkgrey", lwd = 2)
+
+# Add CI's
+lines(purp_xmap_red_means$lib_size, purp_xmap_red_means$rho + purp_xmap_red_means$sd.rho, col = "purple", 
+    lty = 2, lwd = 2)
+lines(purp_xmap_red_means$lib_size, purp_xmap_red_means$rho - purp_xmap_red_means$sd.rho, col = "purple", 
+    lty = 2, lwd = 2)
+lines(red_xmap_purp_means$lib_size, red_xmap_purp_means$rho + red_xmap_purp_means$sd.rho, col = "red", 
+    lty = 2, lwd = 2)
+lines(red_xmap_purp_means$lib_size, red_xmap_purp_means$rho - red_xmap_purp_means$sd.rho, col = "red", 
+    lty = 2, lwd = 2)
+
 ```
