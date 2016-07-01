@@ -30,12 +30,46 @@ betterDates <-function(dat) {
 benthdens.dat$Date <- betterDates(benthdens.dat)
 #**************************************
 
+# Benthic and midwater fish density
+#**************************************
+benthfish.dat <- read.csv(paste0(W_D,'/data/Benthic fish density raw data.csv')) %>% 
+  select(-JuvDensity,-Date) %>%
+  rename(benth.adult = AdultDensity)
+midfish.dat <- read.csv(paste0(W_D,'/data/Midwater fish density raw data.csv')) %>% 
+  select(-JuvDensity,-Date) %>%
+  rename(mid.adult = AdultDensity)
+
+# joining and summing adult density
+fish.dat <- full_join(benthfish.dat,midfish.dat,by=c("Station","Period","Transect","SpeciesCode")) %>%
+  
+  rowwise() %>%
+  
+  mutate(dens = sum(benth.adult,mid.adult,na.rm=T)) %>%
+  
+  # join station and swath columns into one unique 'site' identifier
+  unite(site,Station,Transect) %>%
+  
+  # Rename some variables and remove extra variables
+  rename(period=Period,spp=SpeciesCode) %>%
+  select(-benth.adult,-mid.adult)
+
+fish.dat$spp <- as.factor(fish.dat$spp)
+
+#*************************************
 # Species Key
 #*************************************
-spp.key <- read.csv(file=paste(W_D,'/data/Table4_Species_sampled.csv',sep='')) # All species, all surveys
+spp.key <- read.csv(file=paste(W_D,'/data/Table4_Species_sampled.csv',sep=''),stringsAsFactors = F) # All species, all surveys
 spp.key.bdens <- spp.key[spp.key$DataSet=="Benthic density",] # just benthic density surveys
+
 # better names
 spp.key.bdens$name <- c("pat","red","purp","wavy","astro","derm","halc","halr","limp","paras","pis","pyc","cys","lam","ymac","youn","eis","pter","mac")
+
+# names for fish
+spp.key.fish <- spp.key %>% 
+  filter(DataSet %in% c("Benthic fish density","Midwater fish density")) %>%
+  select(-DataSet) %>%
+  distinct() %>%
+  
 #**************************************
 
 # Otter data
@@ -66,6 +100,8 @@ benthdat <- benthdens.dat %>%
 # There's one more problem, which is that there are some periods which were not sampled. It's better to make those values NAs in the data than just skipping over time periods.  This set of code expands the timeseries for each site/species to include NA density values for missing survey times.
 
 periods.all <- data_frame(period=1:63)
+
+# "Filling in" benthic data
 sites <- sort(unique(benthdat$site))
 spps <- sort(unique(benthdat$spp))
 benthdat.full <- data_frame()
@@ -77,16 +113,29 @@ for(i in 1:length(sites)) {
   }
 }
 
+# Filling in fish data
+sites <- sort(unique(fish.dat$site))
+spps <- sort(unique(fish.dat$spp))
+fishdat.full <- data_frame()
+for(i in 1:length(sites)) {
+  for(j in 1:length(spps)) {
+    temp <- fish.dat %>% filter(site==sites[i],spp==spps[j])
+    temp <- full_join(periods.all,temp,by="period") %>% mutate(site=sites[i],spp=spps[j])
+    fishdat.full <- bind_rows(fishdat.full,temp)
+  }
+}
+rm(temp)
+
 ```
 
 Convergent cross mapping of the time series.  Based on Sugihara et al. 2012 Science; and Clark et al. 2015 Ecology.  First we run simplex analysis to establish embedding dimension for each species.  Then we can look for nonlinearity and cross mapping.  Because the San Nicolas data is split into periods and swaths, we'll take advantage of all the data we can for each species by constructing library vectors from all records of all swaths within a station, making sure not to construct library vectors spanning two different swaths.
 
 ```{r simplex and smap}
 
-spp.simplex.smap <- function(species, stations=c(1:7), plotout = TRUE) {
+spp.simplex.smap <- function(data,species, stations=c(1:7), lib_frac=0.5,plotout = TRUE) {
   
   # all data for a particular species
-  spp.dat <- filter(benthdat.full, spp==species) %>%
+  spp.dat <- filter(data, spp==species) %>%
     
     # select only some stations (if applicable)
     separate(site,into=c("station","swath"),sep="_",remove=FALSE) %>%
@@ -95,14 +144,25 @@ spp.simplex.smap <- function(species, stations=c(1:7), plotout = TRUE) {
   
   # we need a record of the segments (indices of the beginning and end of each timeseries), so that simplex and s-map do not produce library or prediction vectors that span separate timeseries. This 2-column matrix denotes the row indices of the first and last record in each timeseries.
   
-  segments <- spp.dat %>% mutate(ind = row_number()) %>% group_by(site) %>% summarise(first=first(ind),last=last(ind))
+  segments <- spp.dat %>% mutate(ind = row_number()) %>% 
+    group_by(site) %>% 
+    summarise(first=first(ind),last=last(ind))
   
-  # Now we can produce a random set of half of the segments for prediction, and use the others for the library
-  rndlib <- segments %>% sample_frac(0.5,replace=F) %>% arrange(first) %>% select(-site)
-  rndpred <- anti_join(segments,rndlib,by=c("first","last")) %>% arrange(first) %>% select(-site) # prediction vectors and library vectors mutually exclusive
+  # Now we can produce a random set of the segments for prediction, and use the others for the library.  This is controlled by the lib_frac parameter in the function.  The default is half (half of the vectors used for prediction, half for library)
+  
+   # if lib_frac FALSE, take all segments as library and predictor (triggering leave-one-out cross-validation)
+  if(lib_frac==FALSE) {
+    segments <- select(segments,-site)
+    rndlib<-rndpred<-segments
+  }
+  else{
+    rndlib <- segments %>% sample_frac(lib_frac,replace=F) %>% arrange(first) %>% select(-site)
+    rndpred <- anti_join(segments,rndlib,by=c("first","last")) %>% arrange(first) %>% select(-site) # prediction vectors and library vectors mutually exclusive
+  }
+
   rndlib <- as.matrix(rndlib)
   rndpred <- as.matrix(rndpred)
-  
+ 
   # composite timeseries (just year and data)
   ts.mat <- as.matrix(select(spp.dat,period,dens))
   
@@ -134,13 +194,13 @@ spp.simplex.smap <- function(species, stations=c(1:7), plotout = TRUE) {
 
 ```
 
-Let's apply this to a subset of species in the San Nic dataset.  Let's look for species without too many zeroes, so the dynamics aren't weirdly skewed.
+Let's apply this to a subset of species in the San Nic dataset (benthic density data first).  Let's look for species without too many zeroes, so the dynamics aren't weirdly skewed.
 
 ```{r apply simp and smap}
 # What proportion of zeroes in the data for each species/site?
-numzeroes <- benthdat.full %>% group_by(spp) %>% filter(dens==0) %>% summarise(zeroes=n())
+numzeroes <- benthdat.full %>% group_by(spp) %>% filter(dens==0 | is.na(dens)) %>% summarise(zeroes=n())
 propzeroes <- benthdat.full %>% group_by(spp) %>% 
-  filter(dens != 0) %>% 
+  filter(dens != 0, !is.na(dens)) %>% 
   summarise(nonzeroes=n()) %>%
   left_join(numzeroes, by="spp") %>%
   mutate(propzeroes=(zeroes/(nonzeroes+zeroes))) %>%
@@ -156,7 +216,7 @@ spp.smap.list <- list()
 
 for(i in 1:length(usable.spp)) {
   sppname <- usable.spp[i]
-  temp <- spp.simplex.smap(species=usable.spp[i],plotout=FALSE)
+  temp <- spp.simplex.smap(data=benthdat.full,species=usable.spp[i],plotout=FALSE)
   spp.simp.list[[sppname]] <- temp$simp
   spp.tp.list[[sppname]] <- temp$tp
   spp.smap.list[[sppname]] <- temp$smap
@@ -194,7 +254,7 @@ par(mfrow=c(1,1))
 To do cross-mapping, it really helps to have the data organized in a way such that the time indices are all the same across all species.  So here, we'll make a large composites timeseries with the appended timeseries from all sites, but with columns being species.  We can use this composite for multivariate prediction and cross-mapping.
 
 ```{r composite timeseries}
-composite.ts <- filter(benthdat.full, spp %in% usable.spp) %>%
+comp.ts.benth <- filter(benthdat.full, spp %in% usable.spp) %>%
   dcast(period + site ~ spp,value.var="dens") %>%
   arrange(site)
 ```
@@ -205,21 +265,21 @@ Also, keep in mind that with CCM, prediction is in the opposite direction from n
 
 ```{r CCM}
 # Composite segments (i.e., row indices denoting different sites' timeseries)
-segments <- composite.ts %>% 
+segments <- comp.ts.benth %>% 
   mutate(ind = row_number()) %>% 
   group_by(site) %>% 
   summarise(first=first(ind),last=last(ind)) %>%
   select(-site) %>%
   as.matrix()
 
-composite.ts <- composite.ts %>% select(-site) %>% as.matrix()
+comp.ts.benth <- comp.ts.benth %>% select(-site) %>% as.matrix()
 
 # first, a test: red vs. purple urchins. Test first if red urchin abundance forces purple urchin abundance. Remember, this hypothesis implies that "red" has left a signature on "purp", so we should be able to predict red based on SSR of purple. Embedding dimension will be the best that we found previously for red (E=6).
-purp_xmap_red <- ccm(block=composite.ts, lib=segments, pred=segments, E=6,lib_column = "purp",target_column = "red",
+purp_xmap_red <- ccm(block=comp.ts.benth, lib=segments, pred=segments, E=6,lib_column = "purp",target_column = "red",
                      lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
 
 # to look at uni- vs. bi-directional causation, we also do the inverse (purple predicting red, E=best E for purp=4)
-red_xmap_purp<- ccm(composite.ts, lib=segments, pred=segments, E=4,lib_column = "red",target_column = "purp",
+red_xmap_purp<- ccm(comp.ts.benth, lib=segments, pred=segments, E=4,lib_column = "red",target_column = "purp",
                      lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
 
 # means and sd for each library size
@@ -252,11 +312,11 @@ lines(red_xmap_purp_means$lib_size, red_xmap_purp_means$rho - red_xmap_purp_mean
 Red urchins and macrocystis
 
 ```{r red and macro}
-mac_xmap_red <- ccm(block=composite.ts, lib=segments, pred=segments, E=6,lib_column = "mac",target_column = "red",
+mac_xmap_red <- ccm(block=comp.ts.benth, lib=segments, pred=segments, E=6,lib_column = "mac",target_column = "red",
                      lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
 
 # to look at uni- vs. bi-directional causation, we also do the inverse (mac predicting red, E=best E for mac=4)
-red_xmap_mac<- ccm(composite.ts, lib=segments, pred=segments, E=6,lib_column = "red",target_column = "mac",
+red_xmap_mac<- ccm(comp.ts.benth, lib=segments, pred=segments, E=6,lib_column = "red",target_column = "mac",
                      lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
 
 # means and sd for each library size
@@ -289,11 +349,11 @@ lines(red_xmap_mac_means$lib_size, red_xmap_mac_means$rho - red_xmap_mac_means$s
 Purple urchins and macrocystis
 
 ```{r purple and macro}
-mac_xmap_purp<- ccm(composite.ts, lib=segments, pred=segments, E=4,lib_column = "mac",target_column = "purp",
+mac_xmap_purp<- ccm(comp.ts.benth, lib=segments, pred=segments, E=4,lib_column = "mac",target_column = "purp",
                      lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
 
 # to look at uni- vs. bi-directional causation, we also do the inverse (purp pmacicting mac, E=best E for purp=4)
-purp_xmap_mac <- ccm(block=composite.ts, lib=segments, pred=segments, E=6,lib_column = "purp",target_column = "mac",
+purp_xmap_mac <- ccm(block=comp.ts.benth, lib=segments, pred=segments, E=6,lib_column = "purp",target_column = "mac",
                      lib_sizes = c(seq(5,55,by=2),seq(55,400,by=50)),num_samples=100,silent=TRUE)
 
 # means and sd for each library size
@@ -320,4 +380,99 @@ lines(mac_xmap_purp_means$lib_size, mac_xmap_purp_means$rho + mac_xmap_purp_mean
     lty = 2, lwd = 2)
 lines(mac_xmap_purp_means$lib_size, mac_xmap_purp_means$rho - mac_xmap_purp_means$sd.rho, col = "darkgreen", 
     lty = 2, lwd = 2)
+```
+
+### Pairwise CCM
+Let's look at cross-mapping of all pairs of species
+
+```{r xmap benthic spp}
+ncol <- dim(comp.ts.benth)[2]-1
+col.names <- colnames(comp.ts.benth)[2:15]
+xmap_mat <- array(NA,dim=c(ncol,ncol),dimnames=list(col.names,col.names))
+
+for(i in 1:ncol) {
+  for(j in 1:ncol) {
+    if(i != j) {
+      temp <- ccm(comp.ts.benth,E=bestE$E[bestE$species==col.names[j]],lib_column = 1+i,target_column = 1+j,
+                  lib_sizes = 500,replace=F,silent=T)
+      xmap_mat[i,j] <- ccm_means(temp)$rho
+    }
+  }
+}
+
+# dendrogram (preliminary)
+xmap_mat_dist <- (1-xmap_mat)
+xmap_mat_dist <- as.dist(xmap_mat_dist)
+test<- hclust(xmap_mat_dist,method="ward.D2")
+test<-reorder(test,xmap_mat_dist)
+plot(test,hang=-0.1)
+rect.hclust(test,k=4,border=c("red","blue","darkgreen","purple"))
+
+dend <- as.dendrogram(test)
+heatmap(as.matrix(xmap_mat_dist),Rowv=dend,symm=TRUE)
+
+## WARNING: this takes awhile to run
+
+```
+
+
+## Simplex and S Map, Kelp Forest Fish
+Let's look at the fish data now, and do something similar.
+
+```{r simplex and smap fish data}
+# What proportion of zeroes in the data for each species/site?
+f.numzeroes <- fishdat.full %>% group_by(spp) %>% filter(dens==0 | is.na(dens)) %>% summarise(zeroes=n())
+f.propzeroes <- fishdat.full %>% group_by(spp) %>% 
+  filter(dens != 0,!is.na(dens)) %>% 
+  summarise(nonzeroes=n()) %>%
+  left_join(f.numzeroes, by="spp") %>%
+  mutate(propzeroes=(zeroes/(nonzeroes+zeroes))) %>%
+  arrange(propzeroes)
+
+# We'll choose a subset of fish species to run analyses on
+
+f.usable.spp <- f.propzeroes$spp[1:16]
+
+# Lists to store simplex and smap output for each species
+f.spp.simp.list <- list()
+f.bestE <- data_frame(species = f.usable.spp,E=NA)
+f.spp.tp.list <- list()
+f.spp.smap.list <- list()
+
+for(i in 1:length(f.usable.spp)) {
+  sppname <- as.character(f.usable.spp[i])
+  temp <- spp.simplex.smap(data=fishdat.full,species=sppname,lib_frac=F,plotout=FALSE)
+  f.spp.simp.list[[sppname]] <- temp$simp
+  f.spp.tp.list[[sppname]] <- temp$tp
+  f.spp.smap.list[[sppname]] <- temp$smap
+  f.bestE[i,"E"] <- temp$bestE
+  rm(temp)
+}
+
+# plot simplex output
+par(mfrow=c(2,2))
+
+for(i in 1:length(f.spp.simp.list)) {
+  sppname <- names(f.spp.simp.list)[i]
+  df <- f.spp.simp.list[[i]]
+  plot(df$E,df$rho,type="l",xlab="Embedding Dimension (E)",ylab="Forecast Skill(rho)",main=paste(sppname,"simplex"))
+}
+
+#plot prediction horizons
+plot.new()
+for(i in 1:length(f.spp.tp.list)) {
+  sppname <- names(f.spp.tp.list)[i]
+  df <- f.spp.tp.list[[i]]
+  plot(df$tp,df$rho,type="l",xlab="Prediction Horizon (tp)",ylab="Forecast Skill(rho)",main=paste(sppname,"prediction decay"))
+}
+# plot smap output
+plot.new()
+
+for(i in 1:length(f.spp.smap.list)) {
+  sppname <- names(f.spp.smap.list)[i]
+  df <- f.spp.smap.list[[i]]
+  plot(df$theta,df$rho,type="l",xlab="Nonlinearity (theta)",ylab="Forecast Skill(rho)",main=paste(sppname,"smap"))
+}
+par(mfrow=c(1,1))
+
 ```
