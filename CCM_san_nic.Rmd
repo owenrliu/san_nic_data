@@ -53,8 +53,6 @@ fish.dat <- full_join(benthfish.dat,midfish.dat,by=c("Station","Period","Transec
   rename(period=Period,spp=SpeciesCode) %>%
   select(-benth.adult,-mid.adult)
 
-fish.dat$spp <- as.factor(fish.dat$spp)
-
 #*************************************
 # Species Key
 #*************************************
@@ -68,8 +66,20 @@ spp.key.bdens$name <- c("pat","red","purp","wavy","astro","derm","halc","halr","
 spp.key.fish <- spp.key %>% 
   filter(DataSet %in% c("Benthic fish density","Midwater fish density")) %>%
   select(-DataSet) %>%
-  distinct() %>%
-  
+  distinct()
+
+# quick function to turn a "genus species" into an abbreviated gen.spe identifier
+abbr.fish.names <- function(x) {
+  temp <- strsplit(x," ")[[1]]
+  g <- substr(temp[1],1,3)
+  spe <- substr(temp[2],1,3)
+  paste(g,spe,sep=".")
+}
+
+spp.key.fish$name <- sapply(spp.key.fish$SpeciesName,abbr.fish.names)
+fish.dat <- fish.dat %>% left_join(spp.key.fish,by=c("spp"="SpeciesCode")) %>% 
+  select(-spp,-SpeciesName) %>% rename(spp=name)
+
 #**************************************
 
 # Otter data
@@ -210,7 +220,7 @@ usable.spp <- propzeroes$spp[1:14]
 
 # Lists to store simplex and smap output for each species
 spp.simp.list <- list()
-bestE <- data_frame(species = usable.spp,E=NA)
+b.bestE <- data_frame(species = usable.spp,E=NA)
 spp.tp.list <- list()
 spp.smap.list <- list()
 
@@ -220,7 +230,7 @@ for(i in 1:length(usable.spp)) {
   spp.simp.list[[sppname]] <- temp$simp
   spp.tp.list[[sppname]] <- temp$tp
   spp.smap.list[[sppname]] <- temp$smap
-  bestE[i,"E"] <- temp$bestE
+  b.bestE[i,"E"] <- temp$bestE
   rm(temp)
 }
 
@@ -389,13 +399,36 @@ Let's look at cross-mapping of all pairs of species
 ncol <- dim(comp.ts.benth)[2]-1
 col.names <- colnames(comp.ts.benth)[2:15]
 xmap_mat <- array(NA,dim=c(ncol,ncol),dimnames=list(col.names,col.names))
+# matrix to store a bootstrapped p-value, measuring the probability that a given xmap is greater than zero (calculated as 
+# 1 minus the number of positive results for rho divided by the number of iterations)
+p1.mat <- array(NA,dim=c(ncol,ncol),dimnames=list(col.names,col.names))
+
+# similarly, matrix to store a bootstrapped p-value, this time a t-test value between library size 10 and library size 500, to see if the rho at large library is significantly greater than the rho at small library size (i.e., looking for convergence).  If rho does not converge with library length, it may be a sign of synchrony.
+p2.mat <- array(NA,dim=c(ncol,ncol),dimnames=list(col.names,col.names))
+
+# if both p1 and p2 are positive, indicate overall significant causal signal
+ptot.mat <- array(NA,dim=c(ncol,ncol),dimnames=list(col.names,col.names))
 
 for(i in 1:ncol) {
   for(j in 1:ncol) {
     if(i != j) {
-      temp <- ccm(comp.ts.benth,E=bestE$E[bestE$species==col.names[j]],lib_column = 1+i,target_column = 1+j,
-                  lib_sizes = 500,replace=F,silent=T)
-      xmap_mat[i,j] <- ccm_means(temp)$rho
+      tempE=b.bestE$E[b.bestE$species==col.names[j]]
+      temp <- ccm(comp.ts.benth,E=tempE,lib=segments,pred=segments,lib_column = 1+i,target_column = 1+j,
+                  lib_sizes = c(10,500),replace=T,silent=T)
+      # mean rho at library size 500
+      rhomean <- temp %>% filter(lib_size==500) %>% ccm_means()
+      xmap_mat[i,j] <- rhomean$rho
+      
+      # first p-value (greater than zero? at largest library size)
+      p1 <- temp %>% filter(lib_size==500) %>% mutate(pos=ifelse(rho>0,1,0)) %>% summarise(p=(1-sum(pos)/n()))
+      p1.mat[i,j] <- as.numeric(p1)
+      
+      # second p-value (rho at lib-size 500 greater than rho at lib-size 10?)
+      p2 <- t.test(temp$rho[temp$lib_size==10],temp$rho[temp$lib_size==500])$p.value
+      p2.mat[i,j] <- as.numeric(p2)
+      
+      # overall significance
+      ptot.mat[i,j] <- ifelse(p1<0.05 & p2<0.05,1,0)
     }
   }
 }
@@ -403,16 +436,41 @@ for(i in 1:ncol) {
 # dendrogram (preliminary)
 xmap_mat_dist <- (1-xmap_mat)
 xmap_mat_dist <- as.dist(xmap_mat_dist)
-test<- hclust(xmap_mat_dist,method="ward.D2")
-test<-reorder(test,xmap_mat_dist)
-plot(test,hang=-0.1)
-rect.hclust(test,k=4,border=c("red","blue","darkgreen","purple"))
+test.clust<- hclust(xmap_mat_dist,method="ward.D2")
+test.clust<-reorder(test,xmap_mat_dist)
+plot(test.clust,hang=-0.1)
+rect.hclust(test.clust,k=4,border=c("red","blue","darkgreen","purple"))
 
 dend <- as.dendrogram(test)
 heatmap(as.matrix(xmap_mat_dist),Rowv=dend,symm=TRUE)
 
 ## WARNING: this takes awhile to run
+```
 
+With this output, we can look at the web of significant dynamic causation.  Here we display both the interaction web (which species' dynamics force which other species' dynamics), and calculate a "dynamic centrality" score, which measures the extent to which a species is dynamically causing, or caused by, other species' dynamics.
+
+
+```{r dynamic centrality}
+# number of causes vs. caused by:
+connections <- data.frame(spp=col.names,into=NA,out=NA)
+for(i in 1:length(col.names)) {
+  species <- col.names[i]
+  connections$into[i] <- sum(ptot.mat[species,],na.rm=T)
+  connections$out[i] <- sum(ptot.mat[,species],na.rm=T)
+}
+
+# Interaction web. Arrow from A to B indicates significant causal signal in CCM analysis.
+library(igraph)
+g <- graph.adjacency(t(ptot.mat))
+plot(g)
+
+# Calculate a "centrality" score
+connections <- connections %>% mutate(score=out+into) %>% mutate(centrality=score/max(score),rank=row_number(desc(score))) %>% arrange(desc(centrality))
+ggplot(connections,aes(x=rank,y=centrality))+geom_text(aes(label=spp)) +
+  ggtitle("Dynamic Centrality of Kelp Forest Species") +
+  xlab("Species Rank") +
+  ylab("Relative Centrality") +
+  theme_minimal()
 ```
 
 
@@ -476,3 +534,119 @@ for(i in 1:length(f.spp.smap.list)) {
 par(mfrow=c(1,1))
 
 ```
+
+Now let's do CCM, with ALL the species (benthic and fish).  First, a combined timeseries block.
+
+```{r CCM all species}
+# Benthic species
+comp.ts.benth <- filter(benthdat.full, spp %in% usable.spp) %>%
+  dcast(period + site ~ spp,value.var="dens") %>%
+  arrange(site)
+
+# Fish species
+comp.ts.fish <- filter(fishdat.full, spp %in% f.usable.spp) %>%
+  dcast(period + site ~ spp,value.var="dens",fun.aggregate=mean) %>%
+  arrange(site) %>%
+  select(-site,-period)
+
+# all species. Benthic has two extra "sites" relative to the fish species, so we'll remove these from prediction/library
+comp.ts.all <- comp.ts.benth %>% filter(site != "6_39R",site != "6_22R") %>% bind_cols(comp.ts.fish)
+
+# and the relevant segments (to prevent spanning different time-series)
+segments <- comp.ts.all %>% 
+  mutate(ind = row_number()) %>% 
+  group_by(site) %>% 
+  summarise(first=first(ind),last=last(ind)) %>%
+  select(-site) %>%
+  as.matrix()
+
+comp.ts.all <- comp.ts.all %>% select(-site) %>% as.matrix()
+
+```
+
+Now we run CCM on the entire combined timeseries (pairwise, as before).  This will computationally take a long time.
+
+```{r CCM all species}
+ncol <- dim(comp.ts.all)[2]-1
+col.names <- colnames(comp.ts.all)[2:(ncol+1)]
+xmap_mat <- array(NA,dim=c(ncol,ncol),dimnames=list(col.names,col.names))
+# matrix to store a bootstrapped p-value, measuring the probability that a given xmap is greater than zero (calculated as 
+# 1 minus the number of positive results for rho divided by the number of iterations)
+p1.mat <- array(NA,dim=c(ncol,ncol),dimnames=list(col.names,col.names))
+
+# similarly, matrix to store a bootstrapped p-value, this time a t-test value between library size 10 and library size 500, to see if the rho at large library is significantly greater than the rho at small library size (i.e., looking for convergence).  If rho does not converge with library length, it may be a sign of synchrony.
+p2.mat <- array(NA,dim=c(ncol,ncol),dimnames=list(col.names,col.names))
+
+# if both p1 and p2 are positive, indicate overall significant causal signal
+ptot.mat <- array(NA,dim=c(ncol,ncol),dimnames=list(col.names,col.names))
+
+# Bind best Es for benthic and fish
+bestE <- bind_rows(b.bestE,f.bestE)
+
+
+for(i in 1:ncol) {
+  for(j in 1:ncol) {
+    if(i != j) {
+      tempE=bestE$E[bestE$species==col.names[j]]
+      temp <- ccm(comp.ts.all,lib=segments,pred=segments,E=tempE,lib_column = 1+i,target_column = 1+j,
+                  lib_sizes = c(10,500),replace=T,silent=T)
+      # mean rho at library size 500
+      rhomean <- temp %>% filter(lib_size==500) %>% ccm_means()
+      xmap_mat[i,j] <- rhomean$rho
+      
+      # first p-value (greater than zero? at largest library size)
+      p1 <- temp %>% filter(lib_size==500) %>% mutate(pos=ifelse(rho>0,1,0)) %>% summarise(p=(1-sum(pos)/n()))
+      p1.mat[i,j] <- as.numeric(p1)
+      
+      # second p-value (rho at lib-size 500 greater than rho at lib-size 10?)
+      p2 <- t.test(temp$rho[temp$lib_size==10],temp$rho[temp$lib_size==500])$p.value
+      p2.mat[i,j] <- as.numeric(p2)
+      
+      # overall significance
+      ptot.mat[i,j] <- ifelse(p1<0.05 & p2<0.05,1,0)
+    }
+  }
+}
+
+# dendrogram (preliminary)
+xmap_mat_dist <- (1-xmap_mat)
+xmap_mat_dist <- as.dist(xmap_mat_dist)
+test.clust<- hclust(xmap_mat_dist,method="ward.D2")
+test.clust<-reorder(test.clust,xmap_mat_dist)
+plot(test.clust,hang=-0.1)
+rect.hclust(test.clust,k=4,border=c("red","blue","darkgreen","purple"))
+
+dend <- as.dendrogram(test.clust)
+heatmap(as.matrix(xmap_mat_dist),Rowv=dend,symm=TRUE)
+
+## WARNING: this takes awhile to run
+
+```
+
+Dynamic centrality for entire assemblage:
+
+```{r dynamic centrality}
+# number of causes vs. caused by:
+connections.all <- data.frame(spp=col.names,into=NA,out=NA)
+for(i in 1:length(col.names)) {
+  species <- col.names[i]
+  connections.all$into[i] <- sum(ptot.mat[species,],na.rm=T)
+  connections.all$out[i] <- sum(ptot.mat[,species],na.rm=T)
+}
+
+# Interaction web. Arrow from A to B indicates significant causal signal in CCM analysis.
+library(igraph)
+g <- graph.adjacency(t(ptot.mat))
+plot(g)
+
+# Calculate a "centrality" score
+connections.all <- connections.all %>% mutate(score=out+into) %>% mutate(centrality=score/max(score),rank=row_number(desc(score))) %>% arrange(desc(centrality))
+ggplot(connections.all,aes(x=rank,y=centrality))+geom_text(aes(label=spp),size=3) +
+  ggtitle("Dynamic Centrality of Kelp Forest Species") +
+  xlab("Species Rank") +
+  ylab("Relative Centrality") +
+  theme_minimal()
+ggsave("centrality.png",width=10,height=5)
+```
+
+We should add temperature and maybe ENSO
